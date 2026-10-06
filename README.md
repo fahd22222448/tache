@@ -29,7 +29,7 @@ Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de 
 
 **Rattrapage** : chaque jour, les tâches non faites passent au prochain créneau libre avec une priorité plus haute. Les tâches quotidiennes manquées, comme la vaisselle, ne sont pas cumulées.
 
-**Cours d'arabe (20h–23h)** : chaque semaine, l'app compare l'heure de fin des cours du mardi et du mercredi dans l'EDT. Tu vas au cours le jour où tu finis le plus tôt. Si tu finis pareil, c'est le mercredi. Si l'un des deux jours finit à 18h ou plus, c'est l'autre jour. Si les deux finissent à 18h ou plus, il n'y a pas de cours cette semaine. Le jour est recalculé à chaque mise à jour de l'EDT ; jours et seuil sont réglables.
+**Cours d'arabe (20h–23h)** : chaque semaine, l'app regarde dans l'EDT l'heure de fin des cours du mardi et du mercredi. Le cours d'arabe a lieu le mercredi si tu y finis avant 18h. Sinon, il a lieu le mardi si tu y finis avant 18h. Sinon, il n'y a pas de cours cette semaine. Ce soir-là, la charge de tâches est réduite (20 min). Le jour est recalculé à chaque mise à jour de l'EDT ; jours et seuil sont réglables.
 
 **Déjà faite par quelqu'un d'autre** : dans le menu `⋯` d'une tâche. Elle compte comme faite (elle ne revient pas avant sa prochaine échéance) sans entrer dans tes statistiques. L'app propose ensuite quoi faire à la place avec le temps libéré : avancer une tâche des jours suivants, ajouter une tâche du catalogue qui n'est pas prévue prochainement, ou faire une idée bonus. Tu peux aussi garder ce temps libre.
 

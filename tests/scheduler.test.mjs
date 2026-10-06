@@ -242,9 +242,9 @@ test('cours d’arabe : mardi ou mercredi selon l’heure de fin des cours', asy
   assert.equal(plan('16:00', '18:30'), '2026-10-06'); // mercredi trop tard → mardi
   assert.equal(plan('16:00', '16:00'), '2026-10-07'); // pareil → mercredi
   assert.equal(plan(null, null), '2026-10-07'); // pas cours → mercredi
-  assert.equal(plan('15:00', '17:00'), '2026-10-06'); // plus tôt mardi → mardi
+  assert.equal(plan('15:00', '17:00'), '2026-10-07'); // mercredi finit avant 18h → mercredi
   assert.equal(plan('18:00', '18:15'), null); // trop tard les deux → pas de cours
-  plan('16:00', '17:00');
+  plan('16:00', '18:00');
   const mardi = dayInfo(s, '2026-10-06');
   assert.ok(mardi.blocks.some((b) => b.arabic && b.start === '20:00' && b.end === '23:00'));
   assert.ok(!dayInfo(s, '2026-10-07').blocks.some((b) => b.arabic));
@@ -307,9 +307,9 @@ test('soir de cours d’arabe : plafond réduit et tâches en trop reportées', 
   s.settings.useEdt = true;
   s.edt = { events: [
     { date: '2026-10-06', start: '13:00', end: '16:30', title: 'Cours' },
-    { date: '2026-10-07', start: '09:00', end: '17:00', title: 'Cours' },
+    { date: '2026-10-07', start: '09:00', end: '18:30', title: 'Cours' },
   ] };
-  // Mardi finit plus tôt → arabe mardi
+  // Mercredi finit trop tard → arabe mardi
   assert.equal(dayInfo(s, '2026-10-06').rawCap, 20);
   assert.match(dayInfo(s, '2026-10-06').capReason, /arabe/);
   assert.equal(dayInfo(s, '2026-10-07').rawCap, 45);

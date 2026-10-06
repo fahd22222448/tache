@@ -59,10 +59,9 @@ export function edtEndOn(state, date) {
 
 /**
  * Jour du cours d'arabe pour la semaine de `date`, recalculé à partir de l'EDT :
- * - on va le jour où les cours finissent le plus tôt ;
- * - si les deux jours finissent pareil → jour par défaut (mercredi) ;
- * - si l'un des jours finit trop tard (≥ 18h) → l'autre jour ;
- * - si les deux finissent trop tard → pas de cours d'arabe cette semaine.
+ * - jour préféré (mercredi) si les cours y finissent avant 18h ;
+ * - sinon l'autre jour (mardi) si les cours y finissent avant 18h ;
+ * - sinon pas de cours d'arabe cette semaine.
  */
 export function arabicPlan(state, date) {
   const a = state.settings.arabic;
@@ -76,13 +75,13 @@ export function arabicPlan(state, date) {
   const why = `${DAY_NAMES[d1].toLowerCase()} ${fin(e1)}, ${DAY_NAMES[d2].toLowerCase()} ${fin(e2)}`;
   const known = !state.edt?.range || date2 <= state.edt.range.to;
   const res = (d, reason) => ({ date: d, day: d ? weekday(d) : null, reason, why, known, ends: [e1, e2], dates: [date1, date2] });
-  if (late(e1) && late(e2)) return res(null, `pas de cours d’arabe : tu finis à ${a.lateFrom.replace(':', 'h')} ou plus les deux jours`);
-  if (late(e1)) return res(date2, `${DAY_NAMES[d1].toLowerCase()} tu finis trop tard`);
-  if (late(e2)) return res(date1, `${DAY_NAMES[d2].toLowerCase()} tu finis trop tard`);
-  const m1 = e1 ? toMin(e1) : 0;
-  const m2 = e2 ? toMin(e2) : 0;
-  if (m1 === m2) return res(addDays(ws, a.tieDay), 'tu finis pareil les deux jours');
-  return m1 < m2 ? res(date1, `tu finis plus tôt le ${DAY_NAMES[d1].toLowerCase()}`) : res(date2, `tu finis plus tôt le ${DAY_NAMES[d2].toLowerCase()}`);
+  const limit = a.lateFrom.replace(':', 'h');
+  const prefDay = a.days.includes(a.tieDay) ? a.tieDay : d2;
+  const [pDate, pEnd, oDate, oEnd, oDay] = prefDay === d1 ? [date1, e1, date2, e2, d2] : [date2, e2, date1, e1, d1];
+  const name = (d) => DAY_NAMES[d].toLowerCase();
+  if (!late(pEnd)) return res(pDate, `${name(prefDay)} : tu finis avant ${limit}`);
+  if (!late(oEnd)) return res(oDate, `${name(prefDay)} tu finis trop tard, ${name(oDay)} avant ${limit}`);
+  return res(null, `pas de cours d’arabe : tu finis à ${limit} ou plus les deux jours`);
 }
 
 /**

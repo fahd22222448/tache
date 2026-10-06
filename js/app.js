@@ -806,12 +806,12 @@ function viewSettings() {
         <label>Fin <input type="time" name="arabicEnd" value="${s.arabic?.end || '23:00'}"></label>
         <label>Jour possible <select name="arabicDay1">${dayOptions(s.arabic?.days?.[0] ?? 1)}</select></label>
         <label>ou <select name="arabicDay2">${dayOptions(s.arabic?.days?.[1] ?? 2)}</select></label>
-        <label>Si je finis pareil <select name="arabicTie">${dayOptions(s.arabic?.tieDay ?? 2)}</select></label>
+        <label>Jour préféré <select name="arabicTie">${dayOptions(s.arabic?.tieDay ?? 2)}</select></label>
         <label>Trop tard dès <input type="time" name="arabicLate" value="${s.arabic?.lateFrom || '18:00'}"></label>
         <label>Tâches ce soir-là (min) <input type="number" name="arabicCap" min="0" max="120" value="${s.arabic?.cap ?? 20}"></label>
       </div>
       <label class="switch"><input type="checkbox" name="arabicCommute" ${s.arabic?.commute ? 'checked' : ''}><span></span>Compter un trajet pour y aller</label>
-      <p class="hint">Le cours a lieu le jour où tes cours finissent le plus tôt ; à égalité, le jour choisi ; si les deux finissent trop tard, pas de cours.</p>
+      <p class="hint">Le cours a lieu le jour préféré si tes cours y finissent avant l’heure limite, sinon l’autre jour s’ils y finissent avant, sinon pas de cours cette semaine.</p>
     </section>
     <section class="card">
       ${sectionHead(`${icon('school', 18)}Emploi du temps et bonus`)}
