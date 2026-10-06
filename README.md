@@ -35,7 +35,7 @@ Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de 
 
 **Week-end** : plafond plus haut (90 min par défaut, réglable). Les grosses tâches (20 min ou plus, ou pénibles) y sont placées en priorité.
 
-**Salle de sport** : séances fixes le samedi et le dimanche (10h, 1 h 30 par défaut). Chaque semaine, l'app calcule aussi le meilleur jour du lundi au vendredi pour une séance en plus. Il faut un créneau de 1 h 30 après le retour à la maison. L'app préfère le milieu de semaine pour la récupération et évite le soir du cours d'arabe, le jour et la veille d'un contrôle, ainsi que les séances tardives. Le jour peut être changé à la main (« Changer »). Le trajet maison ↔ salle (Basic-Fit Montlhéry, variable `GYM_ADDRESS`) est calculé par IDF Mobilités pour les 7 prochains jours. Ce calcul est refait au plus toutes les 3 h.
+**Salle de sport** : séances fixes le samedi et le dimanche (10h, 1 h 30 par défaut). Chaque semaine, l'app calcule aussi le meilleur jour du lundi au vendredi pour une séance en plus. Il faut un créneau de 1 h 30 après le retour à la maison. L'app préfère le milieu de semaine pour la récupération et évite le soir du cours d'arabe, le jour et la veille d'un contrôle, et la séance ne peut pas commencer après 17h45. Si aucun jour ne le permet, il n'y a que les séances du week-end. Le jour peut être changé à la main (« Changer »). Le trajet maison ↔ salle (Basic-Fit Montlhéry, variable `GYM_ADDRESS`) est calculé par IDF Mobilités pour les 7 prochains jours. Ce calcul est refait au plus toutes les 3 h.
 
 **Tâche bonus** : une petite action en plus est proposée chaque semaine, s'il reste de la place sous le plafond.
 

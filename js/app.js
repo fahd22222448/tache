@@ -430,7 +430,7 @@ document.addEventListener('submit', (e) => {
         commuteMorning: f.commuteMorning === 'on',
         gym: {
           ...s.gym, enabled: f.gymOn === 'on', useTransit: f.gymTransit === 'on', duration: Number(f.gymDuration), travel: Number(f.gymTravel),
-          weekend: f.gymWeekend === 'on', weekendStart: f.gymWeekendStart, weekday: f.gymWeekday === 'on', freeDayFrom: f.gymFreeFrom,
+          weekend: f.gymWeekend === 'on', weekendStart: f.gymWeekendStart, weekday: f.gymWeekday === 'on', freeDayFrom: f.gymFreeFrom, latestStart: f.gymLatest,
         },
         arabic: {
           ...s.arabic, enabled: f.arabicOn === 'on', start: f.arabicStart, end: f.arabicEnd,
@@ -735,7 +735,7 @@ function gymCard(today) {
     const c = p?.chosen;
     const what = c ? `${fmtDate(c.date)} · ${c.slot.start}–${c.slot.end}` : 'Pas de créneau cette semaine';
     return `<li class="row-item" data-act="gym-menu" data-date="${w}"><div class="grow"><span class="eyebrow">${label}</span><div class="ri-title">${what}</div>
-      <div class="ri-sub">${c ? esc(p.manual ? 'choisi par toi' : c.why.join(', ')) : 'aucun jour n’a 1 h 30 de libre'}</div></div>${icon('right', 18, 'muted')}</li>`;
+      <div class="ri-sub">${c ? esc(p.manual ? 'choisi par toi' : c.why.join(', ')) : `aucun jour ne permet de commencer avant ${esc(g.latestStart || '17:45')} : séances du week-end seulement`}</div></div>${icon('right', 18, 'muted')}</li>`;
   };
   const we = g.weekend !== false ? `Samedi et dimanche · ${g.weekendStart}, ${fmtDuration(g.duration)}` : 'Pas de séance le week-end';
   return `<section class="card">
@@ -900,7 +900,11 @@ function viewSettings() {
       <label class="switch"><input type="checkbox" name="gymWeekend" ${s.gym?.weekend !== false ? 'checked' : ''}><span></span>Samedi et dimanche</label>
       <label>Heure le week-end <input type="time" name="gymWeekendStart" value="${s.gym?.weekendStart || '10:00'}"></label>
       <label class="switch"><input type="checkbox" name="gymWeekday" ${s.gym?.weekday !== false ? 'checked' : ''}><span></span>Une séance en plus en semaine (meilleur jour calculé)</label>
-      <label>Les jours sans cours, pas avant <input type="time" name="gymFreeFrom" value="${s.gym?.freeDayFrom || '10:00'}"></label>
+      <div class="grid2">
+        <label>Jours sans cours, pas avant <input type="time" name="gymFreeFrom" value="${s.gym?.freeDayFrom || '10:00'}"></label>
+        <label>En semaine, pas après <input type="time" name="gymLatest" value="${s.gym?.latestStart || '17:45'}"></label>
+      </div>
+      <p class="hint">Si aucun jour ne permet de commencer avant cette heure, il n’y a que les séances du week-end.</p>
     </section>
     <section class="card">
       ${sectionHead(`${icon('book', 18)}Cours d’arabe`)}

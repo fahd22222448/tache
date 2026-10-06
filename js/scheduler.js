@@ -87,7 +87,7 @@ export function gymTravel(state, date) {
 }
 
 /** Premier créneau libre pour une séance de sport ce jour-là (après le retour à la maison). */
-export function gymSlot(state, date, blocks) {
+export function gymSlot(state, date, blocks, latestStart = null) {
   const s = state.settings;
   const g = s.gym || {};
   const dur = Number(g.duration || 90);
@@ -106,6 +106,8 @@ export function gymSlot(state, date, blocks) {
     return [a, e];
   });
   for (let t = Math.ceil(lo / 15) * 15; t + need <= hi; t += 15) {
+    // séance qui commencerait trop tard : on arrête de chercher
+    if (latestStart != null && t + tr.a > latestStart) break;
     if (busy.every(([a, e]) => t + need <= a || t >= e)) {
       return { from: fromMin(t), to: fromMin(t + need), start: fromMin(t + tr.a), end: fromMin(t + tr.a + dur) };
     }
@@ -129,9 +131,12 @@ export function gymPlan(state, date) {
   for (let i = 0; i < 5; i += 1) {
     const d = addDays(ws, i);
     const blocks = blocksOn(state, d, { noGym: true });
-    const slot = gymSlot(state, d, blocks);
+    const latest = toMin(g.latestStart || '17:45');
+    const slot = gymSlot(state, d, blocks, latest);
     if (!slot) {
-      options.push({ date: d, day: i, slot: null, score: Infinity, why: ['pas de créneau libre'] });
+      const home = blocks.find((b) => b.dir === 'retour');
+      const late = home && toMin(home.homeAt) + 15 > latest;
+      options.push({ date: d, day: i, slot: null, score: Infinity, why: [late ? `retour à ${home.homeAt}, trop tard pour une séance avant ${g.latestStart || '17:45'}` : 'pas de créneau libre'] });
       continue;
     }
     let score = GYM_SPACING[i];
@@ -157,10 +162,6 @@ export function gymPlan(state, date) {
     } else if (cours.some((b) => toMin(b.end) >= toMin('17:30'))) {
       score += 0.5;
       why.push('longue journée');
-    }
-    if (toMin(slot.start) >= toMin('20:00')) {
-      score += 1;
-      why.push('séance tardive');
     }
     if (!why.length) why.push(cours.length ? 'soirée libre après les cours' : 'journée libre');
     options.push({ date: d, day: i, slot, score, why });

@@ -125,7 +125,7 @@ export function defaultState() {
       gym: {
         enabled: true, duration: 90, travel: 0,
         weekend: true, weekendDays: [5, 6], weekendStart: '10:00',
-        weekday: true, freeDayFrom: '10:00', pick: {},
+        weekday: true, freeDayFrom: '10:00', latestStart: '17:45', pick: {},
       },
       // Cours d'arabe 20h–23h : mardi ou mercredi selon l'heure de fin des cours (voir arabicPlan)
       arabic: {

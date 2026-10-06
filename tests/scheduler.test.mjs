@@ -341,19 +341,23 @@ test('salle de sport : week-end fixe + meilleur jour en semaine', async () => {
   ] };
   // Samedi : séance fixe à 10h
   assert.ok(dayInfo(s, '2026-10-10').blocks.some((b) => b.kind === 'sport' && b.start === '10:00' && b.end === '11:30'));
-  // Mercredi = soir d'arabe (finit avant 18h) → la séance va ailleurs, de préférence mardi ou jeudi
-  const plan = gymPlan(s, '2026-10-05');
-  assert.equal(plan.chosen.date, '2026-10-06');
-  assert.ok(plan.ranked.find((o) => o.day === 2).why.includes('pas de créneau libre'));
-  // Mardi : séance après le retour (16:30 + 1h40 → 18:10, +15 min, arrondi 18:30)
-  const mardi = dayInfo(s, '2026-10-06').blocks.find((b) => b.kind === 'sport');
-  assert.deepEqual([mardi.start, mardi.end], ['18:30', '20:00']);
-  // Une seule séance en plus dans la semaine
+  // Tous les jours de cours, retour après 17h45 → pas de séance en plus (week-end seulement)
+  let plan = gymPlan(s, '2026-10-05');
+  assert.equal(plan.chosen, null);
+  assert.match(plan.ranked.find((o) => o.day === 1).why[0], /trop tard/);
   const days = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'];
-  assert.equal(days.filter((d) => dayInfo(s, d).blocks.some((b) => b.kind === 'sport')).length, 1);
+  assert.equal(days.filter((d) => dayInfo(s, d).blocks.some((b) => b.kind === 'sport')).length, 0);
+  // Jeudi sans cours → séance jeudi à 10h
+  s.edt.events = s.edt.events.filter((e) => e.date !== '2026-10-08');
+  plan = gymPlan(s, '2026-10-05');
+  assert.equal(plan.chosen.date, '2026-10-08');
+  assert.equal(plan.chosen.slot.start, '10:00');
+  // Mardi, rentré tôt avec maman (16h30 + 45 min) → séance possible à 17h30
+  s.rides = { '2026-10-06|retour': true };
+  assert.equal(gymPlan(s, '2026-10-05').ranked.find((o) => o.day === 1).slot.start, '17:30');
   // Choix manuel respecté
-  s.settings.gym.pick = { '2026-10-05': 3 };
-  assert.equal(gymPlan(s, '2026-10-05').chosen.date, '2026-10-08');
+  s.settings.gym.pick = { '2026-10-05': 1 };
+  assert.equal(gymPlan(s, '2026-10-05').chosen.date, '2026-10-06');
 });
 
 test('salle de sport : trajet IDF Mobilités pris en compte', () => {
