@@ -429,7 +429,7 @@ document.addEventListener('submit', (e) => {
         commuteMin: Number(f.commuteMin), commuteMax: Math.max(Number(f.commuteMax), Number(f.commuteMin)),
         commuteMorning: f.commuteMorning === 'on',
         gym: {
-          ...s.gym, enabled: f.gymOn === 'on', duration: Number(f.gymDuration), travel: Number(f.gymTravel),
+          ...s.gym, enabled: f.gymOn === 'on', useTransit: f.gymTransit === 'on', duration: Number(f.gymDuration), travel: Number(f.gymTravel),
           weekend: f.gymWeekend === 'on', weekendStart: f.gymWeekendStart, weekday: f.gymWeekday === 'on', freeDayFrom: f.gymFreeFrom,
         },
         arabic: {
@@ -508,7 +508,7 @@ function journeyHtml(b) {
     </li>`;
   }).join('');
   const ti = state.edt?.tripsInfo || {};
-  const [o, d] = b.dir === 'aller' ? [ti.home, ti.iut] : [ti.iut, ti.home];
+  const [o, d] = b.mapsFrom ? [b.mapsFrom, b.mapsTo] : b.dir === 'aller' ? [ti.home, ti.iut] : [ti.iut, ti.home];
   const maps = o && d ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(o)}&destination=${encodeURIComponent(d)}&travelmode=transit` : null;
   return `<div class="journey">
     <div class="j-summary">${icon('walk', 14)}${b.dir === 'aller' ? `Départ de chez toi <b>${j.leave}</b>` : `Départ <b>${j.leave}</b>`}<span class="dot-sep"></span>arrivée <b>${j.arrive}</b><span class="dot-sep"></span>${fmtDuration(j.duration)}${j.walk ? `, dont ${j.walk} min à pied` : ''}</div>
@@ -542,12 +542,17 @@ function blockRow(b) {
       <div class="tl-sub">${icon('pin', 13)}${b.room ? `<b>${esc(b.room)}</b>` : '<i>salle non indiquée</i>'}${b.teachers?.length ? `<span class="dot-sep"></span>${esc(b.teachers.join(', '))}` : ''}</div>`);
   }
   if (b.kind === 'sport') {
-    const sub = b.extra
-      ? `Séance en plus · ${esc(b.plan.manual ? 'jour choisi par toi' : b.plan.chosen.why.join(', '))}`
-      : 'Séance du week-end';
+    const why = b.extra ? (b.plan.manual ? 'jour choisi par toi' : b.plan.chosen.why.join(', ')) : 'séance du week-end';
+    const gi = state.edt?.gymTripsInfo || {};
+    const travel = b.tr.a || b.tr.r
+      ? `<div class="tl-sub">${icon(b.tr.ja ? modeIcon(b.tr.ja.legs[0]?.mode) : 'route', 13)}<span>Trajet ${b.tr.a} min aller · ${b.tr.r} min retour${b.tr.ja ? ' (IDF Mobilités)' : ''}</span></div>`
+      : '';
+    const details = b.tr.ja
+      ? `<details class="jdetails"><summary>${icon('down', 14)}Détail du trajet</summary>${journeyHtml({ journey: b.tr.ja, dir: 'aller', mapsFrom: gi.home, mapsTo: gi.gym })}${b.tr.jr ? `<p class="small muted">Retour : ${b.tr.jr.legs.map((l) => `${esc(l.mode)} ${esc(l.line)} ${l.dep}`).join(' → ') || `${fmtDuration(b.tr.jr.duration)}`}</p>` : ''}</details>`
+      : '';
     return tlItem('sport', b.start, b.end, `<div class="tl-row"><div class="tl-title">${icon('dumbbell', 16)}Salle de sport</div>
       ${b.extra ? `<button class="toggle" data-act="gym-menu" data-date="${b.plan.ws}">${icon('calendar', 14)}Changer</button>` : ''}</div>
-      <div class="tl-sub">${sub}${b.travel ? `<span class="dot-sep"></span>trajet ${b.travel} min compris` : ''}</div>`);
+      <div class="tl-sub">Séance <b>${b.session[0]}–${b.session[1]}</b><span class="dot-sep"></span>${esc(why)}</div>${travel}${details}`);
   }
   const ic = b.arabic ? 'book' : 'event';
   return tlItem(b.arabic ? 'arabe' : 'event', b.start, b.end, `<div class="tl-title">${icon(ic, 16)}${esc(b.title)}</div>${b.room ? `<div class="tl-sub">${esc(b.room)}</div>` : ''}`);
@@ -584,7 +589,13 @@ function tasksBlock(date, info) {
   const left = tasks.filter((p) => p.status === 'todo').reduce((a, p) => a + Number(p.duration), 0);
   const done = tasks.filter((p) => p.status !== 'todo').length;
   const home = info.blocks.find((b) => b.dir === 'retour');
-  const at = home?.homeAt || null;
+  // Les tâches commencent au premier vrai moment libre après le retour (après la salle si elle suit).
+  let at = home?.homeAt || null;
+  if (at) {
+    for (const b of info.blocks.filter((x) => !x.hidden && x.kind !== 'trajet').sort((x, y) => toMin(x.start) - toMin(y.start))) {
+      if (toMin(b.start) < toMin(at) + 30 && toMin(b.end) > toMin(at)) at = b.end;
+    }
+  }
   const tomorrowFixed = state.planned.filter((p) => p.date === addDays(date, 1) && p.locked && p.status === 'todo');
   const isHard = state.hardDays.includes(date);
   const body = `<div class="tl-row">
@@ -676,6 +687,7 @@ function viewWeek() {
         ${cours ? chip('school', `${cours} cours`) : ''}
         ${info.revisionMin ? chip('book', `${fmtDuration(info.revisionMin)} révision`) : ''}
         ${home ? chip('home', home.homeAt) : ''}
+        ${info.blocks.filter((b) => b.kind === 'sport').map((b) => chip('dumbbell', `Salle ${b.session[0]}`, 'sport')).join('')}
         ${chip('clock', `${fmtDuration(info.free)} libres`)}
         ${info.capReason ? chip('scale', esc(info.capReason)) : ''}
       </div>
@@ -732,7 +744,7 @@ function gymCard(today) {
       <li class="row-item static"><div class="grow"><span class="eyebrow">Week-end</span><div class="ri-title">${we}</div></div></li>
       ${g.weekday !== false ? `${row('Séance en plus cette semaine', ws)}${row('Semaine prochaine', addDays(ws, 7))}` : ''}
     </ul>
-    <p class="hint">Le meilleur jour est recalculé chaque semaine selon tes cours, ton retour à la maison, le cours d’arabe et tes contrôles.</p>
+    <p class="hint">${state.edt?.gymTripsInfo?.gym ? `${icon('route', 14)}Trajets vers ${esc(state.edt.gymTripsInfo.gym)} calculés par IDF Mobilités. ` : ''}Le meilleur jour est recalculé chaque semaine selon tes cours, ton retour à la maison, le cours d’arabe et tes contrôles.</p>
   </section>`;
 }
 
@@ -882,8 +894,9 @@ function viewSettings() {
       <label class="switch"><input type="checkbox" name="gymOn" ${s.gym?.enabled !== false ? 'checked' : ''}><span></span>Je vais à la salle</label>
       <div class="grid2">
         <label>Durée d’une séance (min) <input type="number" name="gymDuration" min="15" max="240" value="${s.gym?.duration ?? 90}"></label>
-        <label>Trajet aller (min) <input type="number" name="gymTravel" min="0" max="120" value="${s.gym?.travel ?? 0}"></label>
+        <label>Trajet si non calculé (min) <input type="number" name="gymTravel" min="0" max="120" value="${s.gym?.travel ?? 0}"></label>
       </div>
+      <label class="switch"><input type="checkbox" name="gymTransit" ${s.gym?.useTransit !== false ? 'checked' : ''}><span></span>Trajet en transports calculé par IDF Mobilités (Basic-Fit Montlhéry)</label>
       <label class="switch"><input type="checkbox" name="gymWeekend" ${s.gym?.weekend !== false ? 'checked' : ''}><span></span>Samedi et dimanche</label>
       <label>Heure le week-end <input type="time" name="gymWeekendStart" value="${s.gym?.weekendStart || '10:00'}"></label>
       <label class="switch"><input type="checkbox" name="gymWeekday" ${s.gym?.weekday !== false ? 'checked' : ''}><span></span>Une séance en plus en semaine (meilleur jour calculé)</label>

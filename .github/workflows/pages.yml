@@ -51,6 +51,8 @@ jobs:
           HOME_ADDRESS: ${{ vars.HOME_ADDRESS }}
           IUT_ADDRESS: ${{ vars.IUT_ADDRESS }}
           ARRIVE_MARGIN: ${{ vars.ARRIVE_MARGIN }}
+          GYM_ADDRESS: ${{ vars.GYM_ADDRESS }}
+          GYM_WEEKEND_START: ${{ vars.GYM_WEEKEND_START }}
         run: node scripts/fetch-edt.mjs --out _site/edt.json
 
       - uses: actions/upload-pages-artifact@v3

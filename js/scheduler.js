@@ -51,19 +51,39 @@ export function blocksOn(state, date, opts = {}) {
   const g = state.settings.gym;
   if (g?.enabled) {
     const dur = Number(g.duration || 90);
-    const travel = Number(g.travel || 0);
+    const tr = gymTravel(state, date);
     if (g.weekend !== false && (g.weekendDays || [5, 6]).includes(wd)) {
       const st = toMin(g.weekendStart || '10:00');
-      blocks.push({ kind: 'sport', title: 'Salle de sport', start: fromMin(st - travel), end: fromMin(st + dur + travel), travel });
+      blocks.push({
+        kind: 'sport', title: 'Salle de sport', start: fromMin(st - tr.a), end: fromMin(st + dur + tr.r),
+        session: [fromMin(st), fromMin(st + dur)], tr,
+      });
     } else if (!opts.noGym && wd < 5) {
       const plan = gymPlan(state, date);
       if (plan?.chosen?.date === date) {
         const { slot } = plan.chosen;
-        blocks.push({ kind: 'sport', title: 'Salle de sport · séance en plus', start: slot.from, end: slot.to, travel, extra: true, plan });
+        blocks.push({ kind: 'sport', title: 'Salle de sport · séance en plus', start: slot.from, end: slot.to, session: [slot.start, slot.end], tr, extra: true, plan });
       }
     }
   }
   return blocks.sort((a, b) => toMin(a.start) - toMin(b.start));
+}
+
+/**
+ * Trajet maison ↔ salle ce jour-là : celui calculé par IDF Mobilités s'il existe,
+ * sinon la durée saisie dans les réglages.
+ */
+export function gymTravel(state, date) {
+  const g = state.settings.gym || {};
+  const t = g.useTransit !== false ? state.edt?.gymTrips?.[date] : null;
+  const ok = (j) => j && j.duration > 0 && j.duration <= 180;
+  const manual = Number(g.travel || 0);
+  return {
+    a: ok(t?.aller) ? t.aller.duration : manual,
+    r: ok(t?.retour) ? t.retour.duration : manual,
+    ja: ok(t?.aller) ? t.aller : null,
+    jr: ok(t?.retour) ? t.retour : null,
+  };
 }
 
 /** Premier créneau libre pour une séance de sport ce jour-là (après le retour à la maison). */
@@ -71,8 +91,8 @@ export function gymSlot(state, date, blocks) {
   const s = state.settings;
   const g = s.gym || {};
   const dur = Number(g.duration || 90);
-  const travel = Number(g.travel || 0);
-  const need = dur + 2 * travel;
+  const tr = gymTravel(state, date);
+  const need = tr.a + dur + tr.r;
   const home = blocks.find((b) => b.dir === 'retour');
   let lo = toMin(s.wake) + 60;
   lo = Math.max(lo, home ? toMin(home.homeAt) + 15 : toMin(g.freeDayFrom || '10:00'));
@@ -87,7 +107,7 @@ export function gymSlot(state, date, blocks) {
   });
   for (let t = Math.ceil(lo / 15) * 15; t + need <= hi; t += 15) {
     if (busy.every(([a, e]) => t + need <= a || t >= e)) {
-      return { from: fromMin(t), to: fromMin(t + need), start: fromMin(t + travel), end: fromMin(t + travel + dur) };
+      return { from: fromMin(t), to: fromMin(t + need), start: fromMin(t + tr.a), end: fromMin(t + tr.a + dur) };
     }
   }
   return null;

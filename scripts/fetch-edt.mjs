@@ -13,7 +13,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { computeTrips } from './trips.mjs';
+import { computeGymTrips, computeTrips } from './trips.mjs';
 
 const BASE = process.env.EDT_BASE || 'https://edt.iut-velizy.uvsq.fr';
 const GROUP = process.env.EDT_GROUP || 'RT3-FA-A1';
@@ -272,6 +272,7 @@ async function main() {
       updatedAt: sameEvents ? prev.updatedAt || at : at,
       events, changes,
       ...(await computeTrips(events, { from: today, to: addDays(today, 6) })),
+      ...(await computeGymTrips({ from: today, to: addDays(today, 6) }, prev)),
     };
     console.log(`${events.length} cours du ${from} au ${to}, ${fresh.length} changement(s)`);
     for (const c of fresh) console.log(`  ${c.kind} ${c.date} ${c.start}-${c.end} ${c.title}`);

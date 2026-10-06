@@ -102,6 +102,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .chip.ok { background: var(--ok-soft); color: var(--ok); }
 .chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.sport { background: color-mix(in srgb, #0f766e 12%, transparent); color: #0f766e; }
 .chip.exam { background: color-mix(in srgb, var(--exam) 14%, transparent); color: var(--exam); }
 
 /* ---------- Jauges ---------- */

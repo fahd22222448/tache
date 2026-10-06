@@ -355,3 +355,11 @@ test('salle de sport : week-end fixe + meilleur jour en semaine', async () => {
   s.settings.gym.pick = { '2026-10-05': 3 };
   assert.equal(gymPlan(s, '2026-10-05').chosen.date, '2026-10-08');
 });
+
+test('salle de sport : trajet IDF Mobilités pris en compte', () => {
+  const s = defaultStateForTests();
+  s.settings.gym.enabled = true;
+  s.edt = { events: [], gymTrips: { '2026-10-10': { aller: { duration: 25, legs: [] }, retour: { duration: 30, legs: [] } } } };
+  const b = dayInfo(s, '2026-10-10').blocks.find((x) => x.kind === 'sport');
+  assert.deepEqual([b.start, b.end, b.session[0], b.session[1]], ['09:35', '12:00', '10:00', '11:30']);
+});

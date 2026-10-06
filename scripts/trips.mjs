@@ -151,3 +151,61 @@ export async function computeTrips(events, { from, to }) {
     return { trips: {}, tripsInfo: { ...info, error: e.message } };
   }
 }
+
+const GYM_DEFAULT = 'Basic-Fit Montlhéry';
+const weekdayOf = (date) => (new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7;
+const datesBetween = (from, to) => {
+  const out = [];
+  for (let d = new Date(`${from}T12:00:00Z`); d.toISOString().slice(0, 10) <= to; d.setUTCDate(d.getUTCDate() + 1)) out.push(d.toISOString().slice(0, 10));
+  return out;
+};
+
+/**
+ * Trajets maison ↔ salle de sport (Basic-Fit Montlhéry par défaut) pour chaque jour à venir :
+ * week-end → arriver pour l'heure de la séance ; semaine → départ de référence en soirée.
+ * Recalculés au plus toutes les 3 h (sinon on réutilise ceux de la dernière fois).
+ */
+export async function computeGymTrips({ from, to }, prev = null) {
+  const key = process.env.PRIM_API_KEY;
+  const homeQ = process.env.HOME_ADDRESS;
+  const gymQ = process.env.GYM_ADDRESS || GYM_DEFAULT;
+  const info = { ok: false, computedAt: new Date().toISOString(), error: null, query: gymQ };
+  if (!key || !homeQ) return { gymTrips: {}, gymTripsInfo: { ...info, error: 'Trajets non configurés' } };
+  const dates = datesBetween(from, to);
+  const fresh = prev?.gymTripsInfo?.ok && prev.gymTripsInfo.query === gymQ
+    && Date.now() - Date.parse(prev.gymTripsInfo.computedAt) < 3 * 3600 * 1000
+    && dates.every((d) => prev.gymTrips?.[d]);
+  if (fresh) {
+    console.log('  Salle : trajets réutilisés (calculés il y a moins de 3 h)');
+    return { gymTrips: Object.fromEntries(dates.map((d) => [d, prev.gymTrips[d]])), gymTripsInfo: prev.gymTripsInfo };
+  }
+  const weStart = process.env.GYM_WEEKEND_START || '10:00';
+  const duration = Number(process.env.GYM_DURATION || 90);
+  try {
+    const home = await geocode(homeQ, key);
+    const gym = await geocode(gymQ, key);
+    console.log(`  Salle : « ${gymQ} » → ${gym.name}`);
+    const gymTrips = {};
+    let errors = 0;
+    for (const date of dates) {
+      const weekend = weekdayOf(date) >= 5;
+      const t = {};
+      try {
+        t.aller = weekend
+          ? await journey(key, home.id, gym.id, date, addMin(weStart, -5), 'arrival')
+          : await journey(key, home.id, gym.id, date, '18:30', 'departure');
+      } catch (e) { t.allerError = e.message; errors += 1; }
+      try {
+        t.retour = weekend
+          ? await journey(key, gym.id, home.id, date, addMin(weStart, duration + 5), 'departure')
+          : await journey(key, gym.id, home.id, date, '20:15', 'departure');
+      } catch (e) { t.retourError = e.message; errors += 1; }
+      gymTrips[date] = t;
+      console.log(`  🏋 ${date} : aller ${t.aller ? `${t.aller.duration} min` : `✗ ${t.allerError}`} ; retour ${t.retour ? `${t.retour.duration} min` : `✗ ${t.retourError}`}`);
+    }
+    return { gymTrips, gymTripsInfo: { ...info, ok: errors === 0, error: errors ? `${errors} trajet(s) non calculé(s)` : null, home: home.name, gym: gym.name } };
+  } catch (e) {
+    console.error(`Trajets salle : ${e.message}`);
+    return { gymTrips: prev?.gymTrips || {}, gymTripsInfo: { ...info, error: e.message } };
+  }
+}
