@@ -124,7 +124,7 @@ export function defaultState() {
       // Cours d'arabe 20h–23h : mardi ou mercredi selon l'heure de fin des cours (voir arabicPlan)
       arabic: {
         enabled: true, title: 'Cours d’arabe', start: '20:00', end: '23:00',
-        days: [1, 2], tieDay: 2, lateFrom: '18:00', commute: false,
+        days: [1, 2], tieDay: 2, lateFrom: '18:00', commute: false, cap: 20,
       },
     },
     events: [],

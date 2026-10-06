@@ -31,8 +31,7 @@ test('le plafond de charge quotidien n’est jamais dépassé (hors tâches fixe
   for (const d of weekDates(WS)) {
     const info = dayInfo(s, d);
     const load = s.planned.filter((p) => p.date === d && p.status === 'todo' && !p.locked).reduce((a, p) => a + p.duration, 0);
-    const fixed = s.planned.filter((p) => p.date === d && p.locked).reduce((a, p) => a + p.duration, 0);
-    assert.ok(load + fixed <= Math.max(info.cap, fixed), `${d}: ${load + fixed} > ${info.cap}`);
+    assert.ok(load <= info.cap, `${d}: ${load} > ${info.cap}`);
   }
 });
 
@@ -300,4 +299,30 @@ test('trajets réels PRIM : heure de départ et de retour utilisées sauf avec m
   assert.deepEqual([a.start, a.journey.legs.length, r.homeAt], ['11:07', 2, '17:52']);
   s.rides = { '2026-10-06|retour': true };
   assert.equal(dayInfo(s, '2026-10-06').blocks.find((b) => b.dir === 'retour').homeAt, '17:15');
+});
+
+test('soir de cours d’arabe : plafond réduit et tâches en trop reportées', async () => {
+  const { rebalance } = await import('../js/scheduler.js');
+  const s = defaultStateForTests();
+  s.settings.useEdt = true;
+  s.edt = { events: [
+    { date: '2026-10-06', start: '13:00', end: '16:30', title: 'Cours' },
+    { date: '2026-10-07', start: '09:00', end: '17:00', title: 'Cours' },
+  ] };
+  // Mardi finit plus tôt → arabe mardi
+  assert.equal(dayInfo(s, '2026-10-06').rawCap, 20);
+  assert.match(dayInfo(s, '2026-10-06').capReason, /arabe/);
+  assert.equal(dayInfo(s, '2026-10-07').rawCap, 45);
+  // Une journée trop chargée est rééquilibrée, la vaisselle (quotidienne) reste
+  const vaisselle = s.templates.find((t) => t.freq === 'daily');
+  const add = (name, duration, extra = {}) => s.planned.push({ id: name, templateId: extra.tpl || null, name, duration, date: '2026-10-06', status: 'todo', ...extra });
+  add('vaisselle', 15, { tpl: vaisselle.id });
+  add('linge', 15);
+  add('micro', 10);
+  add('poubelle', 5, { locked: true });
+  const { planned, moved } = rebalance(s, '2026-10-06');
+  const mardi = planned.filter((p) => p.date === '2026-10-06').map((p) => p.name).sort();
+  assert.deepEqual(mardi, ['poubelle', 'vaisselle']);
+  assert.equal(moved.length, 2);
+  assert.ok(moved.every((p) => p.date > '2026-10-06'));
 });

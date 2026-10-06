@@ -164,6 +164,12 @@ export function capFor(state, date) {
   const weekend = weekday(date) >= 5;
   let cap = weekend ? Number(s.weekendLoad ?? 90) : Number(s.maxLoad);
   let reason = weekend ? 'Week-end : place aux grosses tâches' : null;
+  // Soir de cours d'arabe : peu de temps entre le retour et le cours, on allège.
+  const ar = s.arabic;
+  if (ar?.enabled && arabicPlan(state, date)?.date === date && Number(ar.cap ?? 20) < cap) {
+    cap = Number(ar.cap ?? 20);
+    reason = `Soir de ${(ar.title || 'cours d’arabe').toLowerCase()} : charge réduite`;
+  }
   for (const ex of state.exams) {
     const k = diffDays(date, ex.date);
     let c = null;
@@ -193,9 +199,10 @@ export function dayInfo(state, date) {
   };
 }
 
+/** Charge d'un jour. Les tâches fixes (poubelles) sont hors plafond : elles ont leur jour quoi qu'il arrive. */
 export function loadOn(planned, date) {
   return planned
-    .filter((p) => p.date === date && (p.status === 'todo' || p.status === 'done'))
+    .filter((p) => p.date === date && !p.locked && (p.status === 'todo' || p.status === 'done'))
     .reduce((a, p) => a + Number(p.duration || 0), 0);
 }
 
@@ -341,7 +348,8 @@ export function generateWeek(state, ws, today) {
   const planned = [...kept];
   const ctx = makeCtx(state, planned, dates);
   for (const f of fixed) {
-    place(ctx, f, f.date);
+    f.date = f.date || null;
+    ctx.byTpl[`${f.templateId}|${f.date}`] = true;
     planned.push(f);
   }
 
@@ -508,6 +516,39 @@ export function suggestReplacements(state, date, limit = 5) {
     .map((b) => ({ kind: 'bonus', name: b.name, duration: Number(b.duration), category: 'bonus' }));
 
   return { room, items: [...advance, ...templates, ...bonus].slice(0, limit) };
+}
+
+/**
+ * Remet chaque jour sous son plafond (si un contrôle, le cours d'arabe ou un changement d'EDT
+ * l'a fait baisser) : les tâches en trop partent au prochain jour libre. Les tâches fixes,
+ * quotidiennes ou déplacées à la main ne bougent pas.
+ */
+export function rebalance(state, from, days = 7) {
+  const planned = state.planned.map((p) => ({ ...p }));
+  const moved = [];
+  const isDaily = (p) => state.templates.find((t) => t.id === p.templateId)?.freq === 'daily';
+  for (let i = 0; i < days; i += 1) {
+    const d = addDays(from, i);
+    const cap = dayInfo(state, d).cap;
+    let load = loadOn(planned, d);
+    if (load <= cap) continue;
+    const movable = planned
+      .filter((p) => p.date === d && p.status === 'todo' && !p.locked && !p.pinned && !isDaily(p))
+      .sort((a, b) => (a.bonus ? -1 : 0) - (b.bonus ? -1 : 0) || b.duration - a.duration);
+    for (const p of movable) {
+      if (load <= cap) break;
+      for (let k = 1; k <= 7; k += 1) {
+        const nd = addDays(d, k);
+        if (loadOn(planned, nd) + Number(p.duration) <= dayInfo(state, nd).cap) {
+          p.date = nd;
+          load -= Number(p.duration);
+          moved.push(p);
+          break;
+        }
+      }
+    }
+  }
+  return { planned, moved };
 }
 
 /** Prochain jour (à partir de `from`) où la tâche rentre sous le plafond. */

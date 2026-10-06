@@ -2,7 +2,7 @@ import {
   DAY_NAMES, DAY_SHORT, addDays, fmtDate, fmtDuration, iso, toMin, todayISO, weekDates, weekStart, weekday,
 } from './dates.js';
 import {
-  arabicPlan, dayInfo, freeAfter, generateWeek, hardDay, loadOn, nextFreeDay, rollover, suggestReplacements, uid,
+  arabicPlan, dayInfo, freeAfter, generateWeek, hardDay, loadOn, nextFreeDay, rebalance, rollover, suggestReplacements, uid,
 } from './scheduler.js';
 import { CATEGORIES, FREQS, IMPORTANCE, defaultState, exportJSON, importJSON, load, save } from './store.js';
 import { computeStats } from './stats.js';
@@ -35,6 +35,15 @@ function toast(msg) {
 
 /* ---------- Maintenance quotidienne ---------- */
 
+/** Remet les jours à venir sous leur plafond (après un changement d'EDT, de réglage…). */
+function keepUnderCap() {
+  const { planned, moved } = rebalance(state, todayISO());
+  if (!moved.length) return;
+  state.planned = planned;
+  save(state);
+  toast(`${moved.length} tâche(s) déplacée(s) pour ne pas dépasser le plafond`);
+}
+
 function dailyMaintenance() {
   const today = todayISO();
   if (state.meta.lastRollover === today) return;
@@ -58,6 +67,7 @@ async function refreshEdt(manual = false) {
     const changed = !state.edt || state.edt.fetchedAt !== data.fetchedAt || state.edt.updatedAt !== data.updatedAt;
     state.edt = data;
     save(state);
+    if (changed) keepUnderCap();
     const fresh = unseenChanges(data, state.edtSeen, todayISO());
     if (changed && fresh.length && state.settings.notifications) {
       notify('Emploi du temps modifié', fresh.slice(0, 3).map(describeChange).join('\n'), 'edt');
@@ -381,7 +391,7 @@ document.addEventListener('submit', (e) => {
         arabic: {
           ...s.arabic, enabled: f.arabicOn === 'on', start: f.arabicStart, end: f.arabicEnd,
           days: [Number(f.arabicDay1), Number(f.arabicDay2)], tieDay: Number(f.arabicTie),
-          lateFrom: f.arabicLate, commute: f.arabicCommute === 'on',
+          lateFrom: f.arabicLate, commute: f.arabicCommute === 'on', cap: Number(f.arabicCap),
         },
         maxLoad: Number(f.maxLoad), weekendLoad: Number(f.weekendLoad), examCap: Number(f.examCap), hardDayCap: Number(f.hardDayCap),
         dailyRevision: Number(f.dailyRevision), useEdt: f.useEdt === 'on', edtUrl: f.edtUrl.trim(),
@@ -392,6 +402,7 @@ document.addEventListener('submit', (e) => {
         return { name, duration: Number(d) || 10 };
       });
     });
+    keepUnderCap();
     toast('Réglages enregistrés');
     refreshEdt();
     return;
@@ -797,6 +808,7 @@ function viewSettings() {
         <label>ou <select name="arabicDay2">${dayOptions(s.arabic?.days?.[1] ?? 2)}</select></label>
         <label>Si je finis pareil <select name="arabicTie">${dayOptions(s.arabic?.tieDay ?? 2)}</select></label>
         <label>Trop tard dès <input type="time" name="arabicLate" value="${s.arabic?.lateFrom || '18:00'}"></label>
+        <label>Tâches ce soir-là (min) <input type="number" name="arabicCap" min="0" max="120" value="${s.arabic?.cap ?? 20}"></label>
       </div>
       <label class="switch"><input type="checkbox" name="arabicCommute" ${s.arabic?.commute ? 'checked' : ''}><span></span>Compter un trajet pour y aller</label>
       <p class="hint">Le cours a lieu le jour où tes cours finissent le plus tôt ; à égalité, le jour choisi ; si les deux finissent trop tard, pas de cours.</p>
@@ -1000,6 +1012,7 @@ function render() {
 /* ---------- Démarrage ---------- */
 
 dailyMaintenance();
+keepUnderCap();
 render();
 refreshEdt();
 setInterval(tick, 60 * 1000);
