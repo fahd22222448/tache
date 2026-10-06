@@ -66,9 +66,13 @@ test('le trajet compte : pas de tâche avant d’être rentré, temps entre les 
   ] };
   const info = dayInfo(s, '2026-10-05');
   const retour = info.blocks.find((b) => b.title === 'Trajet retour');
-  assert.deepEqual([retour.start, retour.homeFrom, retour.end], ['18:00', '18:45', '19:40']);
+  assert.deepEqual([retour.start, retour.homeAt, retour.end], ['18:00', '19:40', '19:40']);
   // 6h50 → 19h40 hors de la maison (aller 1h40 + cours et trou de midi + retour 1h40)
   assert.equal(info.busy, 19 * 60 + 40 - (6 * 60 + 50));
+  // Retour avec maman : 45 min au lieu de 1 h 40
+  s.rides = { '2026-10-05|retour': true };
+  assert.equal(dayInfo(s, '2026-10-05').blocks.find((b) => b.title === 'Trajet retour').end, '18:45');
+  s.rides = {};
   // Pas de cours : pas de trajet
   assert.equal(dayInfo(s, '2026-10-06').busy, 0);
   // Activité marquée « loin de chez moi » : trajet compté aussi
@@ -245,4 +249,16 @@ test('cours d’arabe : mardi ou mercredi selon l’heure de fin des cours', asy
   const mardi = dayInfo(s, '2026-10-06');
   assert.ok(mardi.blocks.some((b) => b.arabic && b.start === '20:00' && b.end === '23:00'));
   assert.ok(!dayInfo(s, '2026-10-07').blocks.some((b) => b.arabic));
+});
+
+test('temps libre restant compté à partir de maintenant', async () => {
+  const { freeAfter } = await import('../js/scheduler.js');
+  const s = defaultStateForTests();
+  s.settings.useEdt = true;
+  s.settings.arabic.enabled = false;
+  s.edt = { events: [{ date: '2026-10-06', start: '13:00', end: '16:30', title: 'Cours' }] };
+  const info = dayInfo(s, '2026-10-06');
+  // À 13h32 : il ne reste que 18h10 → 23h00
+  assert.equal(freeAfter(s, info, 13 * 60 + 32), 23 * 60 - (18 * 60 + 10));
+  assert.equal(freeAfter(s, info, 7 * 60), info.free);
 });

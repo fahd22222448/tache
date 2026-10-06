@@ -2,7 +2,7 @@ import {
   DAY_NAMES, DAY_SHORT, addDays, fmtDate, fmtDuration, iso, toMin, todayISO, weekDates, weekStart, weekday,
 } from './dates.js';
 import {
-  arabicPlan, dayInfo, generateWeek, hardDay, loadOn, nextFreeDay, rollover, suggestReplacements, uid,
+  arabicPlan, dayInfo, freeAfter, generateWeek, hardDay, loadOn, nextFreeDay, rollover, suggestReplacements, uid,
 } from './scheduler.js';
 import { CATEGORIES, FREQS, IMPORTANCE, defaultState, exportJSON, importJSON, load, save } from './store.js';
 import { computeStats } from './stats.js';
@@ -10,7 +10,7 @@ import { buildICS } from './ics.js';
 import { fetchEdt, unseenChanges } from './edt.js';
 
 let state = load();
-const ui = { tab: 'today', ws: weekStart(todayISO()), sheet: null, toast: null, edtError: null };
+const ui = { progDate: null, tab: 'today', ws: weekStart(todayISO()), sheet: null, toast: null, edtError: null };
 const $app = document.getElementById('app');
 const $sheet = document.getElementById('sheet');
 const $toast = document.getElementById('toast');
@@ -41,6 +41,8 @@ function dailyMaintenance() {
   state.planned = planned;
   const old = addDays(today, -60);
   state.hardDays = (state.hardDays || []).filter((d) => d >= old);
+  state.rides = Object.fromEntries(Object.entries(state.rides || {}).filter(([k]) => k.slice(0, 10) >= addDays(today, -7)));
+  ui.progDate = null;
   state.planned = state.planned.filter((p) => !p.date || p.date >= addDays(today, -120));
   state.meta.lastRollover = today;
   save(state);
@@ -80,6 +82,8 @@ function notify(title, body, tag) {
 
 function tick() {
   dailyMaintenance();
+  // Le temps libre restant dépend de l'heure : on rafraîchit la page du jour.
+  if (ui.tab === 'today' && !ui.sheet && document.visibilityState === 'visible') render();
   if (!state.settings.notifications) return;
   const now = new Date();
   const today = iso(now);
@@ -185,6 +189,16 @@ const actions = {
     toast('Bonus ajouté ⭐');
   },
   'replace-none': () => { closeSheet(); toast('OK, ce temps est libre 🙂'); },
+  ride: (el) => {
+    state.rides ||= {};
+    commit(() => {
+      if (state.rides[el.dataset.key]) delete state.rides[el.dataset.key];
+      else state.rides[el.dataset.key] = true;
+    });
+  },
+  'prog-prev': () => { shiftProg(-1); },
+  'prog-next': () => { shiftProg(1); },
+  'prog-today': () => { ui.progDate = null; render(); },
   'move-menu': (el) => openSheet({ type: 'move', id: el.dataset.id }),
   'move-to': (el) => {
     const p = byId(el.dataset.id);
@@ -265,6 +279,20 @@ document.addEventListener('click', (e) => {
     fn(el);
   }
 });
+
+// Glisser à gauche / à droite sur « Mon programme » pour changer de jour.
+let touch = null;
+document.addEventListener('touchstart', (e) => {
+  if (!e.target.closest('[data-swipe="prog"]')) return;
+  touch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+}, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (!touch) return;
+  const dx = e.changedTouches[0].clientX - touch.x;
+  const dy = e.changedTouches[0].clientY - touch.y;
+  touch = null;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) shiftProg(dx < 0 ? 1 : -1);
+}, { passive: true });
 
 document.addEventListener('change', (e) => {
   const el = e.target;
@@ -397,10 +425,10 @@ const BLOCK_ICON = { cours: '🎓', trajet: '🚆', event: '📌' };
 
 function blockRow(b) {
   if (b.kind === 'trajet') {
-    const extra = b.homeFrom
-      ? ` <small>(${fmtDuration(b.min)} à ${fmtDuration(b.max)}) → à la maison entre ${b.homeFrom} et ${b.end}</small>`
-      : ` <small>(jusqu’à ${fmtDuration(b.max)})</small>`;
-    return `<li class="blk trajet"><span class="time">${b.start}–${b.end}</span> 🚆 ${esc(b.title)}${extra}</li>`;
+    const how = b.mom ? '🚗' : '🚆';
+    const extra = b.homeAt ? ` <small>· ${fmtDuration(b.duration)} → à la maison vers ${b.homeAt}</small>` : ` <small>· ${fmtDuration(b.duration)}</small>`;
+    return `<li class="blk trajet ${b.mom ? 'mom' : ''}"><div class="trajet-row"><div><span class="time">${b.start}–${b.end}</span> ${how} ${esc(b.title)}${extra}</div>
+      <button class="ride ${b.mom ? 'on' : ''}" data-act="ride" data-key="${b.date}|${b.dir}" aria-pressed="${b.mom}">${b.mom ? '✓ ' : ''}Avec maman</button></div></li>`;
   }
   if (b.kind === 'cours') {
     return `<li class="blk cours"><span class="time">${b.start}–${b.end}</span>
@@ -419,6 +447,33 @@ function blocksList(info) {
   return items.length ? `<ul class="blocks">${items.join('')}</ul>` : '<p class="muted">Rien de prévu.</p>';
 }
 
+function shiftProg(n) {
+  const cur = ui.progDate || todayISO();
+  ui.progDate = addDays(cur, n);
+  if (ui.progDate === todayISO()) ui.progDate = null;
+  ui.slide = n > 0 ? 'from-right' : 'from-left';
+  render();
+}
+
+function programCard() {
+  const today = todayISO();
+  const date = ui.progDate || today;
+  const info = dayInfo(state, date);
+  const d = Number(date.slice(8, 10));
+  const label = `${DAY_NAMES[weekday(date)].toLowerCase()} ${d}`;
+  const slide = ui.slide || '';
+  ui.slide = null;
+  return `<section class="card prog" data-swipe="prog">
+    <div class="prog-head">
+      <button class="icon-btn" data-act="prog-prev" aria-label="Jour précédent">‹</button>
+      <div class="center"><h2>Mon programme ${label}</h2>
+        ${date !== today ? `<button class="link small" data-act="prog-today">Revenir à aujourd’hui</button>` : '<span class="muted small">aujourd’hui</span>'}</div>
+      <button class="icon-btn" data-act="prog-next" aria-label="Jour suivant">›</button>
+    </div>
+    <div class="prog-body ${slide}">${blocksList(info)}</div>
+  </section>`;
+}
+
 function viewToday() {
   const today = todayISO();
   const info = dayInfo(state, today);
@@ -429,18 +484,16 @@ function viewToday() {
   const tomorrowFixed = state.planned.filter((p) => p.date === addDays(today, 1) && p.locked && p.status === 'todo');
   const isHard = state.hardDays.includes(today);
   const homeBack = info.blocks.find((b) => b.title === 'Trajet retour');
+  const now = new Date();
+  const freeLeft = Math.max(0, freeAfter(state, info, now.getHours() * 60 + now.getMinutes()) - remaining);
   const ws = weekStart(today);
   const weekEmpty = !state.planned.some((p) => p.date >= ws && p.date <= addDays(ws, 6));
-  const hello = state.settings.name ? `Salut ${esc(state.settings.name)} 👋` : 'Salut 👋';
 
   return `
-  <header class="top"><div><h1>${hello}</h1><p class="muted">${fmtDate(today)}</p></div></header>
+  <header class="top"><h1>Tâches</h1></header>
   ${edtBanner(today)}
   ${weekEmpty ? `<section class="card banner"><strong>Ta semaine n'est pas encore planifiée.</strong><button class="btn primary" data-act="generate" data-ws="${ws}">✨ Générer ma semaine</button></section>` : ''}
-  <section class="card">
-    <h2>Mon programme</h2>
-    ${blocksList(info)}
-  </section>
+  ${programCard()}
   <section class="card">
     <h2>Mes tâches du jour</h2>
     ${tasks.length ? `<ul class="tasks">${tasks.map((p) => taskRow(p)).join('')}</ul>` : '<p class="muted">Aucune tâche aujourd’hui. Profite ! 🙂</p>'}
@@ -453,13 +506,13 @@ function viewToday() {
   </section>
   <section class="card">
     <div class="stats3">
-      <div><b>${fmtDuration(Math.max(0, info.free - remaining))}</b><small>temps libre restant</small></div>
+      <div><b>${fmtDuration(freeLeft)}</b><small>temps libre restant</small></div>
       <div><b>${fmtDuration(remaining)}</b><small>de tâches à faire</small></div>
       <div><b>${load}/${info.cap}</b><small>min (plafond)</small></div>
     </div>
     ${loadBar(load, info.cap)}
     ${info.capReason ? `<p class="hint">⚖️ Charge réduite : ${esc(info.capReason)}</p>` : ''}
-    ${homeBack ? `<p class="hint">🏠 Retour à la maison entre ${homeBack.homeFrom} et ${homeBack.end} : tes tâches sont pour après.</p>` : ''}
+    ${homeBack ? `<p class="hint">🏠 Retour à la maison vers ${homeBack.homeAt}${homeBack.mom ? ' (avec maman)' : ''} : tes tâches sont pour après.</p>` : ''}
   </section>
   ${unplaced.length ? `<section class="card warn"><h2>À placer (${unplaced.length})</h2><p class="hint">Ces tâches ne rentrent pas sous ton plafond. Déplace-les à la main ou supprime-les.</p><ul class="tasks">${unplaced.map((p) => taskRow(p)).join('')}</ul></section>` : ''}`;
 }
@@ -488,7 +541,7 @@ function viewWeek() {
         ${info.capReason ? `<span class="tag">⚖️ ${esc(info.capReason)}</span>` : ''}
         ${cours ? `<span class="tag">📅 ${cours} créneau(x)</span>` : ''}
         ${info.revisionMin ? `<span class="tag">📚 ${fmtDuration(info.revisionMin)} révision</span>` : ''}
-        ${home ? `<span class="tag">🏠 ${home.homeFrom}–${home.end}</span>` : ''}
+        ${home ? `<span class="tag">🏠 ${home.homeAt}</span>` : ''}
         <span class="tag">🕒 ${fmtDuration(info.free)} libres</span>
       </div>
       ${tasks.length ? `<ul class="tasks">${tasks.map((p) => taskRow(p)).join('')}</ul>` : '<p class="muted small">Pas de tâche</p>'}
@@ -646,11 +699,11 @@ function viewSettings() {
     <fieldset>
       <legend>🚆 Trajet maison ↔ IUT</legend>
       <div class="grid2">
-        <label>Au plus court (min) <input type="number" name="commuteMin" min="0" max="300" value="${s.commuteMin}"></label>
-        <label>Au plus long (min) <input type="number" name="commuteMax" min="0" max="300" value="${s.commuteMax}"></label>
+        <label>🚗 Avec maman (min) <input type="number" name="commuteMin" min="0" max="300" value="${s.commuteMin}"></label>
+        <label>🚆 Sans maman (min) <input type="number" name="commuteMax" min="0" max="300" value="${s.commuteMax}"></label>
       </div>
       <label class="inline"><input type="checkbox" name="commuteMorning" ${s.commuteMorning !== false ? 'checked' : ''}> Compter aussi le trajet aller le matin</label>
-      <p class="hint">Pour planifier, l’app prend le trajet le plus long : tu ne te retrouves jamais avec des tâches prévues alors que tu n’es pas encore rentré.</p>
+      <p class="hint">Dans « Mon programme », touche « Avec maman » sur un trajet aller ou retour : il passe à la durée courte. Sinon c’est la durée sans maman.</p>
     </fieldset>
     <fieldset>
       <legend>📖 Cours d’arabe</legend>

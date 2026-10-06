@@ -9,7 +9,7 @@ Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de 
 
 | | |
 |---|---|
-| ☀️ **Aujourd'hui** | Dans l'ordre : programme du jour (cours avec type CM/TD/TP/DS, salle et enseignant, trajets, révisions), tâches à cocher avec bouton « Journée difficile », puis temps libre restant, plafond et heure de retour |
+| ☀️ **Aujourd'hui** | Dans l'ordre : programme du jour (glisser à gauche/droite pour voir les autres jours) (cours avec type CM/TD/TP/DS, salle et enseignant, trajets, révisions), tâches à cocher avec bouton « Journée difficile », puis temps libre restant, plafond et heure de retour |
 | 🗓️ **Semaine** | « Générer ma semaine », vue des 7 jours avec la charge de chacun, puis validation. Sur chaque tâche, `⋯` permet de reporter, déplacer, échanger ou supprimer (un imprévu se gère en 2 clics) |
 | 🎓 **Planning** | État de la synchro EDT et derniers changements, contrôles et devoirs (date, matière, importance), activités ponctuelles ou répétées chaque semaine |
 | 🧺 **Tâches** | Catalogue (nom, durée, fréquence, catégorie, difficulté, jour fixe, mois de saison) et ressenti 😖 / 😐 / 🙂 |
@@ -19,7 +19,7 @@ Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de 
 ### Comment la semaine est générée (`js/scheduler.js`)
 
 1. Les **tâches fixes** sont placées en premier : poubelle grise le lundi, jaune le mercredi (🔒).
-2. **Temps libre** d'un jour = heures éveillées − cours (EDT) − activités − **trajets** − révisions automatiques. Les jours de cours, tout le temps passé hors de la maison compte comme occupé : le trajet aller, les cours, les trous entre deux cours et le trajet retour. Le trajet varie entre 45 min et 1 h 40 (réglable) ; l'app prévoit toujours le plus long.
+2. **Temps libre** d'un jour = heures éveillées − cours (EDT) − activités − **trajets** − révisions automatiques. Les jours de cours, tout le temps passé hors de la maison compte comme occupé : le trajet aller, les cours, les trous entre deux cours et le trajet retour. Chaque trajet aller ou retour a un bouton **« Avec maman »** : coché, il dure 45 min, sinon 1 h 40 (durées réglables).
 3. **Plafond de charge** par jour : 45 min par défaut, 20 min le jour et la veille d'un contrôle, réduit 2 à 3 jours avant pour un contrôle important. Le plafond n'est jamais dépassé : ce qui ne rentre pas va dans « À placer ».
 4. **Ordre de placement** : tâches en retard, puis urgence, puis préférence (les tâches détestées vont sur les jours avec le plus d'énergie), puis les plus longues.
 5. **Répartition** : chaque tâche va sur le jour le moins chargé, et l'app évite de placer la même tâche deux jours de suite.

@@ -46,7 +46,7 @@ export function blocksOn(state, date) {
     const a = state.settings.arabic;
     blocks.push({ kind: 'event', title: a.title || 'Cours d’arabe', start: a.start, end: a.end, away: !!a.commute, arabic: true });
   }
-  blocks.push(...commuteBlocks(state.settings, blocks.filter((b) => b.away)));
+  blocks.push(...commuteBlocks(state.settings, blocks.filter((b) => b.away), state.rides || {}, date));
   return blocks.sort((a, b) => toMin(a.start) - toMin(b.start));
 }
 
@@ -85,18 +85,26 @@ export function arabicPlan(state, date) {
   return m1 < m2 ? res(date1, `tu finis plus tôt le ${DAY_NAMES[d1].toLowerCase()}`) : res(date2, `tu finis plus tôt le ${DAY_NAMES[d2].toLowerCase()}`);
 }
 
-/** Trajets aller/retour autour des cours (et des activités « loin de chez moi »). */
-export function commuteBlocks(settings, away) {
+/**
+ * Trajets aller/retour autour des cours (et des activités « loin de chez moi »).
+ * Avec maman (voiture) : trajet court (45 min). Sinon : trajet long (1 h 40).
+ * `rides` = { "YYYY-MM-DD|aller": true, "YYYY-MM-DD|retour": true } pour les trajets avec maman.
+ */
+export function commuteBlocks(settings, away, rides = {}, date = '') {
   const max = Number(settings.commuteMax) || 0;
   if (!away.length || max <= 0) return [];
   const min = Math.min(Number(settings.commuteMin) || max, max);
   const first = Math.min(...away.map((b) => toMin(b.start)));
   const last = Math.max(...away.map((b) => toMin(b.end) <= toMin(b.start) ? toMin(b.end) + 1440 : toMin(b.end)));
   const out = [];
+  const momA = !!rides[`${date}|aller`];
+  const momR = !!rides[`${date}|retour`];
   if (settings.commuteMorning !== false) {
-    out.push({ kind: 'trajet', title: 'Trajet aller', start: fromMin(Math.max(0, first - max)), end: fromMin(first), min, max });
+    const d = momA ? min : max;
+    out.push({ kind: 'trajet', dir: 'aller', date, mom: momA, title: 'Trajet aller', start: fromMin(Math.max(0, first - d)), end: fromMin(first), duration: d });
   }
-  out.push({ kind: 'trajet', title: 'Trajet retour', start: fromMin(last), end: fromMin(last + max), min, max, homeFrom: fromMin(last + min) });
+  const d = momR ? min : max;
+  out.push({ kind: 'trajet', dir: 'retour', date, mom: momR, title: 'Trajet retour', start: fromMin(last), end: fromMin(last + d), duration: d, homeAt: fromMin(last + d) });
   if (last > first) out.push({ kind: 'absent', title: 'Hors de la maison', start: fromMin(first), end: fromMin(last), hidden: true });
   return out;
 }
@@ -120,6 +128,16 @@ export function busyMinutes(blocks, wake, sleep) {
   }
   if (cur) total += cur[1] - cur[0];
   return { total, awake: hi - lo };
+}
+
+/** Temps libre restant d'une journée à partir de la minute `fromM` (pour « aujourd'hui »). */
+export function freeAfter(state, info, fromM) {
+  const lo = Math.max(toMin(state.settings.wake), fromM);
+  let hi = toMin(state.settings.sleep);
+  if (hi <= toMin(state.settings.wake)) hi += 1440;
+  if (lo >= hi) return 0;
+  const { total, awake } = busyMinutes(info.blocks, fromMin(lo), state.settings.sleep);
+  return Math.max(0, awake - total - info.revisionMin);
 }
 
 /** Révisions automatiques à prévoir ce jour-là selon les contrôles à venir. */

@@ -113,6 +113,18 @@ section.stats3 { margin-bottom: 12px; }
 .blk.cours { border-color: var(--accent); }
 .blk.rev { border-color: var(--warn); }
 .blk.trajet { border-color: #0891b2; border-left-style: dashed; }
+.blk.trajet.mom { border-color: var(--ok); }
+.trajet-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ride { flex: none; border: 1px solid var(--line); background: var(--card); color: var(--muted); border-radius: 99px; padding: 6px 10px; font-size: .8rem; font-weight: 700; cursor: pointer; min-height: 34px; }
+.ride.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+.prog { touch-action: pan-y; overflow: hidden; }
+.prog-head { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+.prog-head .center { flex: 1; text-align: center; }
+.prog-head h2 { margin: 0; }
+.prog-body.from-right { animation: from-right .22s ease-out; }
+.prog-body.from-left { animation: from-left .22s ease-out; }
+@keyframes from-right { from { transform: translateX(40px); opacity: 0; } }
+@keyframes from-left { from { transform: translateX(-40px); opacity: 0; } }
 .blk.exam { border-color: var(--exam); }
 .blk-sub { font-size: .85rem; color: var(--muted); margin-top: 2px; }
 .blk-sub b { color: var(--text); }
