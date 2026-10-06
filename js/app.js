@@ -590,14 +590,18 @@ function programCard() {
 
 function viewToday() {
   const today = todayISO();
-  const info = dayInfo(state, today);
-  const tasks = state.planned.filter((p) => p.date === today && ['todo', 'done', 'other'].includes(p.status));
-  const load = loadOn(state.planned, today);
+  // Le bilan suit le jour affiché dans « Mon programme ».
+  const day = ui.progDate || today;
+  const info = dayInfo(state, day);
+  const tasks = state.planned.filter((p) => p.date === day && ['todo', 'done', 'other'].includes(p.status));
+  const load = loadOn(state.planned, day);
   const remaining = tasks.filter((p) => p.status === 'todo').reduce((a, p) => a + Number(p.duration), 0);
   const unplaced = state.planned.filter((p) => p.status === 'todo' && !p.date);
   const homeBack = info.blocks.find((b) => b.title === 'Trajet retour');
   const now = new Date();
-  const freeLeft = Math.max(0, freeAfter(state, info, now.getHours() * 60 + now.getMinutes()) - remaining);
+  const free = day === today ? freeAfter(state, info, now.getHours() * 60 + now.getMinutes()) : day > today ? info.free : 0;
+  const freeLeft = Math.max(0, free - remaining);
+  const dayLabel = day === today ? '' : ` · ${DAY_NAMES[weekday(day)].toLowerCase()} ${Number(day.slice(8, 10))}`;
   const ws = weekStart(today);
   const weekEmpty = !state.planned.some((p) => p.date >= ws && p.date <= addDays(ws, 6));
 
@@ -608,13 +612,13 @@ function viewToday() {
   ${programCard()}
   <section class="card">
     <div class="kpis">
-      <div class="kpi"><span class="kpi-v">${fmtDuration(freeLeft)}</span><span class="kpi-l">temps libre restant</span></div>
+      <div class="kpi"><span class="kpi-v">${fmtDuration(freeLeft)}</span><span class="kpi-l">temps libre ${day === today ? 'restant' : 'après tâches'}${dayLabel}</span></div>
       <div class="kpi"><span class="kpi-v">${fmtDuration(remaining)}</span><span class="kpi-l">de tâches à faire</span></div>
       <div class="kpi"><span class="kpi-v">${load}<small>/${info.cap}</small></span><span class="kpi-l">min · plafond</span></div>
     </div>
     ${loadBar(load, info.cap)}
     ${info.capReason ? `<p class="hint">${icon('scale', 14)}${esc(info.capReason)}</p>` : ''}
-    ${homeBack ? `<p class="hint">${icon('home', 14)}Retour à la maison vers ${homeBack.homeAt}${homeBack.mom ? ' (avec maman)' : ''}</p>` : ''}
+    ${homeBack ? `<p class="hint">${icon('home', 14)}Retour à la maison vers ${homeBack.homeAt}${homeBack.mom ? ' (avec maman)' : ''}${dayLabel}</p>` : ''}
   </section>
   ${unplaced.length ? `<section class="card">${sectionHead(`À placer · ${unplaced.length}`)}<p class="hint">${icon('alert', 14)}Ces tâches ne rentrent pas sous ton plafond. Déplace-les ou supprime-les.</p><ul class="tasks">${unplaced.map((p) => taskRow(p)).join('')}</ul></section>` : ''}`;
 }
