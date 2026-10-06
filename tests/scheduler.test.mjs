@@ -312,7 +312,7 @@ test('soir de cours d’arabe : plafond réduit et tâches en trop reportées', 
   // Mercredi finit trop tard → arabe mardi
   assert.equal(dayInfo(s, '2026-10-06').rawCap, 20);
   assert.match(dayInfo(s, '2026-10-06').capReason, /arabe/);
-  assert.equal(dayInfo(s, '2026-10-07').rawCap, 45);
+  assert.equal(dayInfo(s, '2026-10-07').rawCap, 50);
   // Une journée trop chargée est rééquilibrée, la vaisselle (quotidienne) reste
   const vaisselle = s.templates.find((t) => t.freq === 'daily');
   const add = (name, duration, extra = {}) => s.planned.push({ id: name, templateId: extra.tpl || null, name, duration, date: '2026-10-06', status: 'todo', ...extra });
@@ -366,4 +366,17 @@ test('salle de sport : trajet IDF Mobilités pris en compte', () => {
   s.edt = { events: [], gymTrips: { '2026-10-10': { aller: { duration: 25, legs: [] }, retour: { duration: 30, legs: [] } } } };
   const b = dayInfo(s, '2026-10-10').blocks.find((x) => x.kind === 'sport');
   assert.deepEqual([b.start, b.end, b.session[0], b.session[1]], ['09:35', '12:00', '10:00', '11:30']);
+});
+
+test('tâches selon le temps libre : 1 h → 0, 2 h → 5, 3 h → 15, 4 h → 30, plafond 50 en semaine', async () => {
+  const { loadForFree } = await import('../js/scheduler.js');
+  assert.deepEqual([60, 120, 180, 240, 300, 150].map(loadForFree), [0, 5, 15, 30, 50, 10]);
+  const s = defaultStateForTests();
+  const free = (h) => {
+    s.events = [{ id: 'x', title: 'occupé', repeat: false, date: '2026-10-06', start: s.settings.wake, end: `${String(23 - h).padStart(2, '0')}:00` }];
+    return dayInfo(s, '2026-10-06').cap;
+  };
+  assert.deepEqual([free(1), free(2), free(3), free(4), free(8)], [0, 5, 15, 30, 50]);
+  // Le week-end garde son plafond (90) quand il y a du temps
+  assert.equal(dayInfo(s, '2026-10-10').cap, 90);
 });

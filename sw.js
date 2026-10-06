@@ -1,5 +1,5 @@
 // Service worker : l'app marche hors ligne, l'EDT est toujours pris en réseau d'abord.
-const CACHE = 'tache-v10';
+const CACHE = 'tache-v11';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icon.svg',
   'js/app.js', 'js/dates.js', 'js/scheduler.js', 'js/store.js', 'js/stats.js', 'js/ics.js', 'js/edt.js', 'js/icons.js',

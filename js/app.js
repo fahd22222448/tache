@@ -878,6 +878,7 @@ function viewSettings() {
         <label>Jour et veille de contrôle <input type="number" name="examCap" min="0" max="300" value="${s.examCap}"></label>
         <label>Journée difficile <input type="number" name="hardDayCap" min="0" max="120" value="${s.hardDayCap}"></label>
       </div>
+      <p class="hint">${icon('info', 14)}Selon ton temps libre du jour : 1 h → rien, 2 h → 5 min, 3 h → 15 min, 4 h → 30 min, 5 h → 50 min, sans jamais dépasser ces plafonds.</p>
       <label>Révision quotidienne <input type="number" name="dailyRevision" min="0" max="240" value="${s.dailyRevision}"></label>
     </section>
     <section class="card">

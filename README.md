@@ -20,7 +20,7 @@ Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de 
 
 1. Les **tâches fixes** sont placées en premier : poubelle grise le lundi, jaune le mercredi (🔒).
 2. **Temps libre** d'un jour = heures éveillées − cours (EDT) − activités − **trajets** − révisions automatiques. Les jours de cours, tout le temps passé hors de la maison compte comme occupé : le trajet aller, les cours, les trous entre deux cours et le trajet retour. Chaque trajet aller ou retour a un bouton **« Avec maman »** : coché, il dure 45 min, sinon 1 h 40 (durées réglables).
-3. **Plafond de charge** par jour : 45 min par défaut, 20 min le jour et la veille d'un contrôle, réduit 2 à 3 jours avant pour un contrôle important. Le plafond n'est jamais dépassé : ce qui ne rentre pas va dans « À placer ».
+3. **Plafond de charge** par jour, selon le temps libre : 1 h → rien, 2 h → 5 min, 3 h → 15 min, 4 h → 30 min, 5 h → 50 min. En semaine, jamais plus de 50 min (90 min le week-end). Le plafond est aussi 20 min le jour et la veille d'un contrôle, réduit 2 à 3 jours avant pour un contrôle important. Le plafond n'est jamais dépassé : ce qui ne rentre pas va dans « À placer ».
 4. **Ordre de placement** : tâches en retard, puis urgence, puis préférence (les tâches détestées vont sur les jours avec le plus d'énergie), puis les plus longues.
 5. **Répartition** : chaque tâche va sur le jour le moins chargé, et l'app évite de placer la même tâche deux jours de suite.
 6. Tu modifies la proposition si besoin, puis tu la **valides**.

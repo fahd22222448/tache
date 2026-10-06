@@ -1,5 +1,5 @@
 // Moteur de planification : fonctions pures, sans DOM, testables avec node --test.
-import { DAY_NAMES, addDays, diffDays, fromMin, month, toMin, weekDates, weekStart, weekday } from './dates.js';
+import { DAY_NAMES, addDays, diffDays, fmtDuration, fromMin, month, toMin, weekDates, weekStart, weekday } from './dates.js';
 
 // « other » = faite par quelqu'un d'autre : compte comme faite pour la fréquence, pas pour tes stats.
 const DONE_LIKE = ['todo', 'done', 'other'];
@@ -306,14 +306,38 @@ export function capFor(state, date) {
 }
 
 /** Tout ce qu'il faut savoir sur une journée pour planifier et afficher. */
+/**
+ * Minutes de tâches possibles selon le temps libre de la journée :
+ * 1 h → 0, 2 h → 5 min, 3 h → 15 min, 4 h → 30 min, 5 h → 50 min… (interpolé, arrondi à 5 min).
+ */
+const LOAD_SCALE = [[60, 0], [120, 5], [180, 15], [240, 30], [300, 50], [360, 75], [420, 105]];
+export function loadForFree(free) {
+  if (free <= LOAD_SCALE[0][0]) return 0;
+  for (let i = 1; i < LOAD_SCALE.length; i += 1) {
+    const [x1, y1] = LOAD_SCALE[i];
+    if (free <= x1) {
+      const [x0, y0] = LOAD_SCALE[i - 1];
+      return Math.round((y0 + ((free - x0) * (y1 - y0)) / (x1 - x0)) / 5) * 5;
+    }
+  }
+  const [xl, yl] = LOAD_SCALE.at(-1);
+  return Math.round((yl + (free - xl) / 2) / 5) * 5;
+}
+
 export function dayInfo(state, date) {
   const blocks = blocksOn(state, date);
   const { total, awake } = busyMinutes(blocks, state.settings.wake, state.settings.sleep);
   const revisions = revisionsOn(state, date);
   const revisionMin = revisions.reduce((a, r) => a + r.minutes, 0);
   const free = Math.max(0, awake - total - revisionMin);
-  const { cap: rawCap, reason } = capFor(state, date);
-  const cap = Math.max(0, Math.min(rawCap, free));
+  const { cap: rawCap, reason: capReason } = capFor(state, date);
+  const byFree = loadForFree(free);
+  let reason = capReason;
+  if (byFree < rawCap) {
+    const h = fmtDuration(free);
+    reason = byFree ? `${h} de libre : ${byFree} min de tâches max` : `Seulement ${h} de libre : pas de tâche`;
+  }
+  const cap = Math.max(0, Math.min(rawCap, byFree, free));
   const exams = state.exams.filter((e) => e.date === date);
   return {
     date, blocks, revisions, revisionMin, awake, busy: total, free, cap, rawCap, capReason: reason, exams,

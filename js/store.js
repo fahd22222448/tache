@@ -2,7 +2,7 @@
 import { uid } from './scheduler.js';
 
 const KEY = 'tache:v1';
-const VERSION = 2;
+const VERSION = 3;
 // Tâches retirées du catalogue par défaut (supprimées aussi des données déjà enregistrées).
 const REMOVED = ['Serpillière', 'Passer l’aspirateur'];
 
@@ -96,6 +96,11 @@ export function migrate(data) {
     if (data.settings) delete data.settings.playBlocks;
     data.version = 2;
   }
+  if (data.version < 3) {
+    // Plafond en semaine porté à 50 min (la quantité réelle dépend du temps libre).
+    if (data.settings && Number(data.settings.maxLoad) === 45) data.settings.maxLoad = 50;
+    data.version = 3;
+  }
   return data;
 }
 
@@ -106,7 +111,7 @@ export function defaultState() {
       name: '',
       wake: '07:00',
       sleep: '23:00',
-      maxLoad: 45,
+      maxLoad: 50,
       weekendLoad: 90,
       examCap: 20,
       hardDayCap: 10,
