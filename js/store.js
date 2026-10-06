@@ -7,13 +7,13 @@ const VERSION = 2;
 const REMOVED = ['Serpillière', 'Passer l’aspirateur'];
 
 export const CATEGORIES = {
-  cuisine: { label: 'Cuisine', icon: '🍳' },
-  menage: { label: 'Ménage', icon: '🧹' },
-  linge: { label: 'Linge', icon: '👕' },
-  poubelles: { label: 'Poubelles', icon: '🗑️' },
-  jardin: { label: 'Jardin', icon: '🌿' },
-  courses: { label: 'Courses', icon: '🛒' },
-  bonus: { label: 'Bonus', icon: '⭐' },
+  cuisine: { label: 'Cuisine', icon: 'cuisine' },
+  menage: { label: 'Ménage', icon: 'menage' },
+  linge: { label: 'Linge', icon: 'linge' },
+  poubelles: { label: 'Poubelles', icon: 'poubelles' },
+  jardin: { label: 'Jardin', icon: 'jardin' },
+  courses: { label: 'Courses', icon: 'courses' },
+  bonus: { label: 'Bonus', icon: 'star' },
 };
 
 export const FREQS = {
@@ -112,7 +112,7 @@ export function defaultState() {
       hardDayCap: 10,
       dailyRevision: 0,
       reminderTime: '19:30',
-      // Trajet maison ↔ IUT : entre 45 min et 1 h 40. On planifie avec le pire cas (max).
+      // Trajet maison – IUT : 45 min avec maman, 1 h 40 sinon (remplacé par le trajet IDF Mobilités s'il est calculé).
       commuteMin: 45,
       commuteMax: 100,
       commuteMorning: true,

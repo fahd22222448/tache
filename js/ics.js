@@ -44,7 +44,7 @@ export function buildICS(state, today, days = 14) {
     lines.push(
       'BEGIN:VEVENT', `UID:tache-depart-${date}@tache`, `DTSTAMP:${now}`,
       `DTSTART:${stamp(date, j.leave)}`, `DTEND:${stamp(date, j.arrive)}`,
-      `SUMMARY:${esc(`🚌 Partir pour l'IUT (${j.leave})`)}`,
+      `SUMMARY:${esc(`Partir pour l'IUT (${j.leave})`)}`,
       `DESCRIPTION:${esc(j.legs.map((x) => `${x.mode} ${x.line} ${x.dep} ${x.from} → ${x.to}`).join('\n'))}`,
       'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${esc(l ? `${l.mode} ${l.line} à ${l.dep}` : 'Départ')}`, 'TRIGGER:-PT15M', 'END:VALARM',
       'END:VEVENT',
