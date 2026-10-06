@@ -278,7 +278,7 @@ document.addEventListener('submit', (e) => {
     const ev = {
       id: id || uid('e'), title: f.title.trim(), start: f.start, end: f.end, repeat: f.repeat === 'weekly',
       date: f.repeat === 'weekly' ? null : f.date, weekday: f.repeat === 'weekly' ? Number(f.weekday) : null,
-      from: f.repeat === 'weekly' ? todayISO() : null,
+      from: f.repeat === 'weekly' ? todayISO() : null, commute: f.commute === 'on',
     };
     commit(() => { state.events = id ? state.events.map((x) => (x.id === id ? { ...x, ...ev } : x)) : [...state.events, ev]; });
   } else if (kind === 'exam') {
@@ -301,6 +301,8 @@ document.addEventListener('submit', (e) => {
     commit(() => {
       Object.assign(s, {
         name: f.name.trim(), wake: f.wake, sleep: f.sleep, reminderTime: f.reminderTime,
+        commuteMin: Number(f.commuteMin), commuteMax: Math.max(Number(f.commuteMax), Number(f.commuteMin)),
+        commuteMorning: f.commuteMorning === 'on',
         maxLoad: Number(f.maxLoad), examCap: Number(f.examCap), hardDayCap: Number(f.hardDayCap),
         dailyRevision: Number(f.dailyRevision), useEdt: f.useEdt === 'on', edtUrl: f.edtUrl.trim(),
         bonusEnabled: f.bonusEnabled === 'on',
@@ -357,9 +359,21 @@ function edtBanner(today) {
   </section>`;
 }
 
+const BLOCK_ICON = { cours: '🎓', jeu: '🎮', trajet: '🚆', event: '📌' };
+
+function blockRow(b) {
+  if (b.kind === 'trajet') {
+    const extra = b.homeFrom
+      ? ` <small>(${fmtDuration(b.min)} à ${fmtDuration(b.max)}) → à la maison entre ${b.homeFrom} et ${b.end}</small>`
+      : ` <small>(jusqu’à ${fmtDuration(b.max)})</small>`;
+    return `<li class="blk trajet"><span class="time">${b.start}–${b.end}</span> 🚆 ${esc(b.title)}${extra}</li>`;
+  }
+  return `<li class="blk ${b.kind}"><span class="time">${b.start}–${b.end}</span> ${BLOCK_ICON[b.kind] || '📌'} ${esc(b.title)}${b.room ? ` <small>${esc(b.room)}</small>` : ''}</li>`;
+}
+
 function blocksList(info) {
   const items = [
-    ...info.blocks.map((b) => `<li class="blk ${b.kind}"><span class="time">${b.start}–${b.end}</span> ${b.kind === 'cours' ? '🎓' : b.kind === 'jeu' ? '🎮' : '📌'} ${esc(b.title)}${b.room ? ` <small>${esc(b.room)}</small>` : ''}</li>`),
+    ...info.blocks.filter((b) => !b.hidden).map(blockRow),
     ...info.revisions.map((r) => `<li class="blk rev"><span class="time">${fmtDuration(r.minutes)}</span> 📚 Réviser ${esc(r.subject)}</li>`),
     ...info.exams.map((x) => `<li class="blk exam"><span class="time">!</span> 📝 ${x.kind === 'devoir' ? 'Devoir à rendre' : 'Contrôle'} : ${esc(x.subject)}</li>`),
   ];
@@ -375,6 +389,7 @@ function viewToday() {
   const unplaced = state.planned.filter((p) => p.status === 'todo' && !p.date);
   const tomorrowFixed = state.planned.filter((p) => p.date === addDays(today, 1) && p.locked && p.status === 'todo');
   const isHard = state.hardDays.includes(today);
+  const homeBack = info.blocks.find((b) => b.title === 'Trajet retour');
   const ws = weekStart(today);
   const weekEmpty = !state.planned.some((p) => p.date >= ws && p.date <= addDays(ws, 6));
   const hello = state.settings.name ? `Salut ${esc(state.settings.name)} 👋` : 'Salut 👋';
@@ -391,6 +406,7 @@ function viewToday() {
     </div>
     ${loadBar(load, info.cap)}
     ${info.capReason ? `<p class="hint">⚖️ Charge réduite : ${esc(info.capReason)}</p>` : ''}
+    ${homeBack ? `<p class="hint">🏠 Retour à la maison entre ${homeBack.homeFrom} et ${homeBack.end} : tes tâches sont pour après.</p>` : ''}
   </section>
   <section class="card">
     <h2>Mes tâches du jour</h2>
@@ -420,7 +436,8 @@ function viewWeek() {
     const info = dayInfo(state, d);
     const tasks = state.planned.filter((p) => p.date === d && ['todo', 'done'].includes(p.status));
     const load = loadOn(state.planned, d);
-    const cours = info.blocks.filter((b) => b.kind !== 'jeu').length;
+    const cours = info.blocks.filter((b) => b.kind === 'cours' || b.kind === 'event').length;
+    const home = info.blocks.find((b) => b.title === 'Trajet retour');
     return `<section class="card day ${d === today ? 'is-today' : ''} ${d < today ? 'past' : ''}">
       <div class="day-head">
         <div><strong>${DAY_NAMES[weekday(d)]}</strong> <span class="muted">${fmtDate(d, false)}</span></div>
@@ -432,6 +449,7 @@ function viewWeek() {
         ${info.capReason ? `<span class="tag">⚖️ ${esc(info.capReason)}</span>` : ''}
         ${cours ? `<span class="tag">📅 ${cours} créneau(x)</span>` : ''}
         ${info.revisionMin ? `<span class="tag">📚 ${fmtDuration(info.revisionMin)} révision</span>` : ''}
+        ${home ? `<span class="tag">🏠 ${home.homeFrom}–${home.end}</span>` : ''}
         <span class="tag">🕒 ${fmtDuration(info.free)} libres</span>
       </div>
       ${tasks.length ? `<ul class="tasks">${tasks.map((p) => taskRow(p)).join('')}</ul>` : '<p class="muted small">Pas de tâche</p>'}
@@ -545,6 +563,15 @@ function viewSettings() {
       <label>Révision quotidienne (min) <input type="number" name="dailyRevision" min="0" max="240" value="${s.dailyRevision}"></label>
     </div>
     <label>Heure du rappel <input type="time" name="reminderTime" value="${s.reminderTime}"></label>
+    <fieldset>
+      <legend>🚆 Trajet maison ↔ IUT</legend>
+      <div class="grid2">
+        <label>Au plus court (min) <input type="number" name="commuteMin" min="0" max="300" value="${s.commuteMin}"></label>
+        <label>Au plus long (min) <input type="number" name="commuteMax" min="0" max="300" value="${s.commuteMax}"></label>
+      </div>
+      <label class="inline"><input type="checkbox" name="commuteMorning" ${s.commuteMorning !== false ? 'checked' : ''}> Compter aussi le trajet aller le matin</label>
+      <p class="hint">Pour planifier, l’app prend le trajet le plus long : tu ne te retrouves jamais avec des tâches prévues alors que tu n’es pas encore rentré.</p>
+    </fieldset>
     <label class="inline"><input type="checkbox" name="useEdt" ${s.useEdt ? 'checked' : ''}> Synchroniser l’emploi du temps de l’IUT</label>
     <label>Adresse des données EDT <input name="edtUrl" value="${esc(s.edtUrl)}"></label>
     <label class="inline"><input type="checkbox" name="bonusEnabled" ${s.bonusEnabled !== false ? 'checked' : ''}> Proposer une tâche bonus chaque semaine</label>
@@ -645,6 +672,7 @@ function sheetEvent(e) {
       <label>Début <input type="time" name="start" value="${v.start}" required></label>
       <label>Fin <input type="time" name="end" value="${v.end}" required></label>
     </div>
+    <label class="inline"><input type="checkbox" name="commute" ${v.commute ? 'checked' : ''}> Loin de chez moi (entreprise, IUT…) : compter le trajet</label>
     <button class="btn primary">Enregistrer</button>
     ${e ? `<button type="button" class="btn danger" data-act="del-event" data-id="${e.id}">Supprimer</button>` : ''}
   </form>`;

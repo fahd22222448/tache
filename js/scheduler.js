@@ -1,5 +1,5 @@
 // Moteur de planification : fonctions pures, sans DOM, testables avec node --test.
-import { addDays, diffDays, month, toMin, weekDates, weekday } from './dates.js';
+import { addDays, diffDays, fromMin, month, toMin, weekDates, weekday } from './dates.js';
 
 export const FREQ_DAYS = { daily: 1, weekly: 7, biweekly: 14, monthly: 30 };
 // Délai minimal depuis la dernière fois avant de reproposer la tâche.
@@ -18,7 +18,11 @@ export function uid(prefix = 'id') {
 
 /* ---------- Ce qui occupe une journée ---------- */
 
-/** Créneaux occupés d'une date : événements perso, cours de l'EDT, temps de jeu protégé. */
+/**
+ * Créneaux occupés d'une date : événements perso, cours de l'EDT, temps de jeu protégé,
+ * et trajets. Entre le départ et le retour, tu n'es pas à la maison : ce temps est compté
+ * comme occupé (bloc « absent », non affiché).
+ */
 export function blocksOn(state, date) {
   const wd = weekday(date);
   const blocks = [];
@@ -26,19 +30,36 @@ export function blocksOn(state, date) {
     const matches = e.repeat
       ? e.weekday === wd && (!e.from || e.from <= date) && !(e.exceptions || []).includes(date)
       : e.date === date;
-    if (matches) blocks.push({ kind: 'event', title: e.title, start: e.start, end: e.end, id: e.id });
+    if (matches) blocks.push({ kind: 'event', title: e.title, start: e.start, end: e.end, id: e.id, away: !!e.commute });
   }
   if (state.settings.useEdt && state.edt?.events) {
     for (const e of state.edt.events) {
       if (e.date === date && !(state.settings.hiddenEdt || []).includes(e.title)) {
-        blocks.push({ kind: 'cours', title: e.title, start: e.start, end: e.end, room: e.room, type: e.type });
+        blocks.push({ kind: 'cours', title: e.title, start: e.start, end: e.end, room: e.room, type: e.type, away: true });
       }
     }
   }
+  blocks.push(...commuteBlocks(state.settings, blocks.filter((b) => b.away)));
   for (const p of state.settings.playBlocks || []) {
     if (p.day === -1 || p.day === wd) blocks.push({ kind: 'jeu', title: 'Temps de jeu protégé', start: p.start, end: p.end });
   }
   return blocks.sort((a, b) => toMin(a.start) - toMin(b.start));
+}
+
+/** Trajets aller/retour autour des cours (et des activités « loin de chez moi »). */
+export function commuteBlocks(settings, away) {
+  const max = Number(settings.commuteMax) || 0;
+  if (!away.length || max <= 0) return [];
+  const min = Math.min(Number(settings.commuteMin) || max, max);
+  const first = Math.min(...away.map((b) => toMin(b.start)));
+  const last = Math.max(...away.map((b) => toMin(b.end) <= toMin(b.start) ? toMin(b.end) + 1440 : toMin(b.end)));
+  const out = [];
+  if (settings.commuteMorning !== false) {
+    out.push({ kind: 'trajet', title: 'Trajet aller', start: fromMin(Math.max(0, first - max)), end: fromMin(first), min, max });
+  }
+  out.push({ kind: 'trajet', title: 'Trajet retour', start: fromMin(last), end: fromMin(last + max), min, max, homeFrom: fromMin(last + min) });
+  if (last > first) out.push({ kind: 'absent', title: 'Hors de la maison', start: fromMin(first), end: fromMin(last), hidden: true });
+  return out;
 }
 
 /** Minutes occupées dans la fenêtre éveillée, chevauchements fusionnés. */

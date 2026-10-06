@@ -39,6 +39,10 @@ export function defaultState() {
       hardDayCap: 10,
       dailyRevision: 0,
       reminderTime: '19:30',
+      // Trajet maison ↔ IUT : entre 45 min et 1 h 40. On planifie avec le pire cas (max).
+      commuteMin: 45,
+      commuteMax: 100,
+      commuteMorning: true,
       notifications: false,
       useEdt: true,
       edtUrl: 'edt.json',

@@ -19,7 +19,7 @@ Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de 
 ### Comment la semaine est générée (`js/scheduler.js`)
 
 1. Les **tâches fixes** sont placées en premier : poubelle grise le lundi, jaune le mercredi (🔒).
-2. **Temps libre** d'un jour = heures éveillées − cours (EDT) − activités − révisions automatiques − temps de jeu protégé.
+2. **Temps libre** d'un jour = heures éveillées − cours (EDT) − activités − **trajets** − révisions automatiques − temps de jeu protégé. Les jours de cours, tout le temps passé hors de la maison compte comme occupé : le trajet aller, les cours, les trous entre deux cours et le trajet retour. Le trajet varie entre 45 min et 1 h 40 (réglable) ; l'app prévoit toujours le plus long.
 3. **Plafond de charge** par jour : 45 min par défaut, 20 min le jour et la veille d'un contrôle, réduit 2 à 3 jours avant pour un contrôle important. Le plafond n'est jamais dépassé : ce qui ne rentre pas va dans « À placer ».
 4. **Ordre de placement** : tâches en retard, puis urgence, puis préférence (les tâches détestées vont sur les jours avec le plus d'énergie), puis les plus longues.
 5. **Répartition** : chaque tâche va sur le jour le moins chargé, et l'app évite de placer la même tâche deux jours de suite.

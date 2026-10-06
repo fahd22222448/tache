@@ -49,11 +49,32 @@ test('les cours et le temps de jeu réduisent le temps libre', () => {
   const s = defaultStateForTests();
   s.settings.playBlocks = [{ day: -1, start: '21:00', end: '22:00' }];
   s.settings.useEdt = true;
+  s.settings.commuteMax = 0;
   s.edt = { events: [{ date: '2026-10-05', start: '08:00', end: '18:00', title: 'Cours' }] };
   const lundi = dayInfo(s, '2026-10-05');
   const mardi = dayInfo(s, '2026-10-06');
   assert.equal(mardi.free - lundi.free, 600);
   assert.equal(mardi.free, 16 * 60 - 60);
+});
+
+test('le trajet compte : pas de tâche avant d’être rentré, temps entre les cours inclus', () => {
+  const s = defaultStateForTests();
+  s.settings.useEdt = true;
+  s.settings.wake = '06:00';
+  s.edt = { events: [
+    { date: '2026-10-05', start: '08:30', end: '10:30', title: 'Réseaux' },
+    { date: '2026-10-05', start: '15:00', end: '18:00', title: 'TP' },
+  ] };
+  const info = dayInfo(s, '2026-10-05');
+  const retour = info.blocks.find((b) => b.title === 'Trajet retour');
+  assert.deepEqual([retour.start, retour.homeFrom, retour.end], ['18:00', '18:45', '19:40']);
+  // 6h50 → 19h40 hors de la maison (aller 1h40 + cours et trou de midi + retour 1h40)
+  assert.equal(info.busy, 19 * 60 + 40 - (6 * 60 + 50));
+  // Pas de cours : pas de trajet
+  assert.equal(dayInfo(s, '2026-10-06').busy, 0);
+  // Activité marquée « loin de chez moi » : trajet compté aussi
+  s.events.push({ id: 'w', title: 'Entreprise', repeat: true, weekday: 1, start: '09:00', end: '17:00', commute: true });
+  assert.ok(dayInfo(s, '2026-10-06').blocks.some((b) => b.title === 'Trajet retour'));
 });
 
 test('une journée bien remplie ne reçoit pas de tâche qui ne rentre pas', () => {
