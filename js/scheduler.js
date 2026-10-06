@@ -337,10 +337,31 @@ export function dayInfo(state, date) {
     const h = fmtDuration(free);
     reason = byFree ? `${h} de libre : ${byFree} min de tâches max` : `Seulement ${h} de libre : pas de tâche`;
   }
-  const cap = Math.max(0, Math.min(rawCap, byFree, free));
+  let cap = Math.max(0, Math.min(rawCap, byFree, free));
+  // Aujourd'hui : on ne compte que le temps libre qui reste à partir de maintenant
+  // (les tâches déjà faites restent comptées).
+  let freeNow = null;
+  if (state.clock?.date === date) {
+    freeNow = freeAfter(state, { blocks, revisionMin }, state.clock.minutes);
+    const done = state.planned
+      .filter((p) => p.date === date && !p.locked && p.status === 'done')
+      .reduce((a, p) => a + Number(p.duration || 0), 0);
+    // La vaisselle et les autres tâches quotidiennes restent faisables même le soir.
+    const daily = state.planned
+      .filter((p) => p.date === date && p.status === 'todo' && !p.locked
+        && state.templates.find((t) => t.id === p.templateId)?.freq === 'daily')
+      .reduce((a, p) => a + Number(p.duration || 0), 0);
+    const nowCap = done + Math.max(loadForFree(freeNow), daily);
+    if (nowCap < cap) {
+      cap = nowCap;
+      reason = daily >= loadForFree(freeNow)
+        ? `Plus que ${fmtDuration(freeNow)} de libre aujourd’hui : seulement les tâches du quotidien, le reste est reporté`
+        : `Plus que ${fmtDuration(freeNow)} de libre aujourd’hui : ${loadForFree(freeNow)} min de tâches encore`;
+    }
+  }
   const exams = state.exams.filter((e) => e.date === date);
   return {
-    date, blocks, revisions, revisionMin, awake, busy: total, free, cap, rawCap, capReason: reason, exams,
+    date, blocks, revisions, revisionMin, awake, busy: total, free, freeNow, cap, rawCap, capReason: reason, exams,
     energy: awake ? free / awake : 0,
   };
 }

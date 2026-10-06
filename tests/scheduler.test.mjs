@@ -380,3 +380,26 @@ test('tâches selon le temps libre : 1 h → 0, 2 h → 5, 3 h → 15, 4 h → 3
   // Le week-end garde son plafond (90) quand il y a du temps
   assert.equal(dayInfo(s, '2026-10-10').cap, 90);
 });
+
+test('aujourd’hui : plafond selon le temps libre restant, le reste est reporté', async () => {
+  const { rebalance } = await import('../js/scheduler.js');
+  const s = defaultStateForTests();
+  const vaisselle = s.templates.find((t) => t.freq === 'daily');
+  s.planned = [
+    { id: 'v', templateId: vaisselle.id, name: 'vaisselle', duration: 15, date: '2026-10-06', status: 'todo' },
+    { id: 'a', templateId: null, name: 'linge', duration: 15, date: '2026-10-06', status: 'todo' },
+    { id: 'b', templateId: null, name: 'frigo', duration: 5, date: '2026-10-06', status: 'todo' },
+    { id: 'c', templateId: null, name: 'aspi', duration: 10, date: '2026-10-06', status: 'done' },
+  ];
+  // Le matin : toute la journée devant soi
+  s.clock = { date: '2026-10-06', minutes: 8 * 60 };
+  assert.equal(dayInfo(s, '2026-10-06').cap, 50);
+  // 21h20 avant un coucher à 23h : 1 h 40 de libre → seulement la vaisselle (15) + 10 min déjà faites
+  s.clock = { date: '2026-10-06', minutes: 21 * 60 + 20 };
+  const info = dayInfo(s, '2026-10-06');
+  assert.equal(info.cap, 25);
+  assert.match(info.capReason, /Plus que 1 h 40/);
+  const { planned } = rebalance(s, '2026-10-06');
+  const left = planned.filter((p) => p.date === '2026-10-06').map((p) => p.id).sort();
+  assert.deepEqual(left, ['c', 'v']); // la tâche faite et la vaisselle restent
+});

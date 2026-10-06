@@ -39,7 +39,14 @@ function toast(msg) {
 /** Plafond de chaque jour restant de la semaine : s'il change, la répartition n'est plus bonne. */
 function capSignature(ws) {
   const today = todayISO();
-  return weekDates(ws).filter((d) => d >= today).map((d) => `${d}:${dayInfo(state, d).cap}`).join('|');
+  // Le plafond d'aujourd'hui baisse au fil des heures : on ne compare que son plafond de base.
+  return weekDates(ws).filter((d) => d >= today).map((d) => `${d}:${d === today ? dayInfo(state, d).rawCap : dayInfo(state, d).cap}`).join('|');
+}
+
+/** Heure actuelle donnée au moteur pour calculer le temps libre restant d'aujourd'hui. */
+function syncClock() {
+  const now = new Date();
+  state.clock = { date: iso(now), minutes: now.getHours() * 60 + now.getMinutes() };
 }
 
 /**
@@ -48,6 +55,7 @@ function capSignature(ws) {
  * déplacées à la main conservées). Ensuite, aucun jour à venir ne dépasse son plafond.
  */
 function keepUnderCap() {
+  syncClock();
   const today = todayISO();
   const ws = weekStart(today);
   const sig = capSignature(ws);
@@ -134,6 +142,7 @@ function tick() {
   dailyMaintenance();
   if (state.settings.notifications) departureReminder(new Date());
   // Le temps libre restant dépend de l'heure : on rafraîchit la page du jour.
+  if (new Date().getMinutes() % 10 === 0) keepUnderCap();
   if (ui.tab === 'today' && !ui.sheet && document.visibilityState === 'visible') render();
   if (!state.settings.notifications) return;
   const now = new Date();
@@ -162,6 +171,7 @@ function tick() {
 /* ---------- Actions ---------- */
 
 function generate(ws) {
+  syncClock();
   const { planned, unplaced } = generateWeek(state, ws, todayISO());
   state.planned = planned;
   if (ws === weekStart(todayISO())) state.meta.capSig = { [ws]: capSignature(ws) };
@@ -1128,6 +1138,7 @@ const TABS = [
 ];
 
 function render() {
+  syncClock();
   const tab = TABS.find((t) => t[0] === ui.tab) || TABS[0];
   $app.innerHTML = `<main>${tab[3]()}</main>
   <nav class="tabs">${TABS.map(([k, ic, label]) => `<button data-act="tab" data-tab="${k}" class="${k === ui.tab ? 'on' : ''}" aria-label="${label}">${icon(ic, 22)}<small>${label}</small></button>`).join('')}</nav>`;
@@ -1146,6 +1157,7 @@ setTimeout(tick, 3000);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     dailyMaintenance();
+    keepUnderCap();
     render();
     refreshEdt();
   }
