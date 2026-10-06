@@ -257,8 +257,13 @@ export function busyMinutes(blocks, wake, sleep) {
 }
 
 /** Temps libre restant d'une journée à partir de la minute `fromM` (pour « aujourd'hui »). */
+/** Début du temps libre compté : l'après-midi seulement (12h par défaut), jamais le matin. */
+export function freeStart(settings) {
+  return fromMin(Math.max(toMin(settings.wake), toMin(settings.freeFrom || '12:00')));
+}
+
 export function freeAfter(state, info, fromM) {
-  const lo = Math.max(toMin(state.settings.wake), fromM);
+  const lo = Math.max(toMin(freeStart(state.settings)), fromM);
   let hi = toMin(state.settings.sleep);
   if (hi <= toMin(state.settings.wake)) hi += 1440;
   if (lo >= hi) return 0;
@@ -326,7 +331,7 @@ export function loadForFree(free) {
 
 export function dayInfo(state, date) {
   const blocks = blocksOn(state, date);
-  const { total, awake } = busyMinutes(blocks, state.settings.wake, state.settings.sleep);
+  const { total, awake } = busyMinutes(blocks, freeStart(state.settings), state.settings.sleep);
   const revisions = revisionsOn(state, date);
   const revisionMin = revisions.reduce((a, r) => a + r.minutes, 0);
   const free = Math.max(0, awake - total - revisionMin);

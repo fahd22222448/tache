@@ -111,6 +111,8 @@ export function defaultState() {
       name: '',
       wake: '07:00',
       sleep: '23:00',
+      // Le temps libre ne compte que l'après-midi et le soir.
+      freeFrom: '12:00',
       maxLoad: 50,
       weekendLoad: 90,
       examCap: 20,

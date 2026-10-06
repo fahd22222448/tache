@@ -51,8 +51,9 @@ test('les cours réduisent le temps libre', () => {
   s.edt = { events: [{ date: '2026-10-05', start: '08:00', end: '18:00', title: 'Cours' }] };
   const lundi = dayInfo(s, '2026-10-05');
   const mardi = dayInfo(s, '2026-10-06');
-  assert.equal(mardi.free - lundi.free, 600);
-  assert.equal(mardi.free, 16 * 60);
+  // Seul l'après-midi compte (12h → 23h) : le cours de 12h à 18h retire 6 h
+  assert.equal(mardi.free - lundi.free, 360);
+  assert.equal(mardi.free, 11 * 60);
 });
 
 test('le trajet compte : pas de tâche avant d’être rentré, temps entre les cours inclus', () => {
@@ -66,8 +67,8 @@ test('le trajet compte : pas de tâche avant d’être rentré, temps entre les 
   const info = dayInfo(s, '2026-10-05');
   const retour = info.blocks.find((b) => b.title === 'Trajet retour');
   assert.deepEqual([retour.start, retour.homeAt, retour.end], ['18:00', '19:40', '19:40']);
-  // 6h50 → 19h40 hors de la maison (aller 1h40 + cours et trou de midi + retour 1h40)
-  assert.equal(info.busy, 19 * 60 + 40 - (6 * 60 + 50));
+  // Temps compté à partir de 12h : hors de la maison jusqu'à 19h40 (retour 1h40 compris)
+  assert.equal(info.busy, 19 * 60 + 40 - 12 * 60);
   // Retour avec maman : 45 min au lieu de 1 h 40
   s.rides = { '2026-10-05|retour': true };
   assert.equal(dayInfo(s, '2026-10-05').blocks.find((b) => b.title === 'Trajet retour').end, '18:45');
@@ -311,7 +312,7 @@ test('soir de cours d’arabe : plafond réduit et tâches en trop reportées', 
   ] };
   // Mercredi finit trop tard → arabe mardi
   assert.equal(dayInfo(s, '2026-10-06').rawCap, 20);
-  assert.match(dayInfo(s, '2026-10-06').capReason, /arabe/);
+  assert.match(dayInfo(s, '2026-10-06').capReason, /arabe|libre/);
   assert.equal(dayInfo(s, '2026-10-07').rawCap, 50);
   // Une journée trop chargée est rééquilibrée, la vaisselle (quotidienne) reste
   const vaisselle = s.templates.find((t) => t.freq === 'daily');

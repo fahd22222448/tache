@@ -435,7 +435,7 @@ document.addEventListener('submit', (e) => {
     const s = state.settings;
     commit(() => {
       Object.assign(s, {
-        name: f.name.trim(), wake: f.wake, sleep: f.sleep, reminderTime: f.reminderTime,
+        name: f.name.trim(), wake: f.wake, sleep: f.sleep, freeFrom: f.freeFrom || '12:00', reminderTime: f.reminderTime,
         commuteMin: Number(f.commuteMin), commuteMax: Math.max(Number(f.commuteMax), Number(f.commuteMin)),
         commuteMorning: f.commuteMorning === 'on',
         gym: {
@@ -600,7 +600,7 @@ function tasksBlock(date, info) {
   const done = tasks.filter((p) => p.status !== 'todo').length;
   const home = info.blocks.find((b) => b.dir === 'retour');
   // Les tâches commencent au premier vrai moment libre après le retour (après la salle si elle suit).
-  let at = home?.homeAt || null;
+  let at = home?.homeAt || state.settings.freeFrom || '12:00';
   if (at) {
     for (const b of info.blocks.filter((x) => !x.hidden && x.kind !== 'trajet').sort((x, y) => toMin(x.start) - toMin(y.start))) {
       if (toMin(b.start) < toMin(at) + 30 && toMin(b.end) > toMin(at)) at = b.end;
@@ -878,6 +878,8 @@ function viewSettings() {
         <label>Réveil <input type="time" name="wake" value="${s.wake}" required></label>
         <label>Coucher <input type="time" name="sleep" value="${s.sleep}" required></label>
       </div>
+      <label>Temps libre compté à partir de <input type="time" name="freeFrom" value="${s.freeFrom || '12:00'}"></label>
+      <p class="hint">Le matin ne compte jamais : seulement l’après-midi et le soir (ou à partir de ton retour à la maison).</p>
       <label>Heure du rappel <input type="time" name="reminderTime" value="${s.reminderTime}"></label>
     </section>
     <section class="card">
