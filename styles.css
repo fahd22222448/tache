@@ -120,6 +120,7 @@ section.stats3 { margin-bottom: 12px; }
 .row-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 .row-item:last-child { border-bottom: 0; }
 .row-item.off { opacity: .5; }
+.row-item.static { cursor: default; }
 .imp { font-weight: 800; color: var(--exam); }
 .prefs { display: flex; gap: 2px; flex: none; }
 .pref { border: 1px solid transparent; background: transparent; border-radius: 10px; font-size: 1.15rem; width: 38px; height: 38px; cursor: pointer; opacity: .35; }

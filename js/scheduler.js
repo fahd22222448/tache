@@ -1,5 +1,5 @@
 // Moteur de planification : fonctions pures, sans DOM, testables avec node --test.
-import { addDays, diffDays, fromMin, month, toMin, weekDates, weekday } from './dates.js';
+import { DAY_NAMES, addDays, diffDays, fromMin, month, toMin, weekDates, weekStart, weekday } from './dates.js';
 
 // « other » = faite par quelqu'un d'autre : compte comme faite pour la fréquence, pas pour tes stats.
 const DONE_LIKE = ['todo', 'done', 'other'];
@@ -41,8 +41,48 @@ export function blocksOn(state, date) {
       }
     }
   }
+  const arabic = arabicPlan(state, date);
+  if (arabic?.date === date) {
+    const a = state.settings.arabic;
+    blocks.push({ kind: 'event', title: a.title || 'Cours d’arabe', start: a.start, end: a.end, away: !!a.commute, arabic: true });
+  }
   blocks.push(...commuteBlocks(state.settings, blocks.filter((b) => b.away)));
   return blocks.sort((a, b) => toMin(a.start) - toMin(b.start));
+}
+
+/** Heure de fin du dernier cours de l'EDT ce jour-là (null s'il n'y a pas cours). */
+export function edtEndOn(state, date) {
+  if (!state.settings.useEdt || !state.edt?.events) return null;
+  const ends = state.edt.events.filter((e) => e.date === date).map((e) => e.end);
+  return ends.length ? ends.sort().at(-1) : null;
+}
+
+/**
+ * Jour du cours d'arabe pour la semaine de `date`, recalculé à partir de l'EDT :
+ * - on va le jour où les cours finissent le plus tôt ;
+ * - si les deux jours finissent pareil → jour par défaut (mercredi) ;
+ * - si l'un des jours finit trop tard (≥ 18h) → l'autre jour ;
+ * - si les deux finissent trop tard → pas de cours d'arabe cette semaine.
+ */
+export function arabicPlan(state, date) {
+  const a = state.settings.arabic;
+  if (!a?.enabled) return null;
+  const ws = weekStart(date);
+  const [d1, d2] = a.days;
+  const [date1, date2] = [addDays(ws, d1), addDays(ws, d2)];
+  const [e1, e2] = [edtEndOn(state, date1), edtEndOn(state, date2)];
+  const late = (e) => e != null && toMin(e) >= toMin(a.lateFrom);
+  const fin = (e) => (e ? `tu finis à ${e.replace(':', 'h')}` : 'pas cours');
+  const why = `${DAY_NAMES[d1].toLowerCase()} ${fin(e1)}, ${DAY_NAMES[d2].toLowerCase()} ${fin(e2)}`;
+  const known = !state.edt?.range || date2 <= state.edt.range.to;
+  const res = (d, reason) => ({ date: d, day: d ? weekday(d) : null, reason, why, known, ends: [e1, e2], dates: [date1, date2] });
+  if (late(e1) && late(e2)) return res(null, `pas de cours d’arabe : tu finis à ${a.lateFrom.replace(':', 'h')} ou plus les deux jours`);
+  if (late(e1)) return res(date2, `${DAY_NAMES[d1].toLowerCase()} tu finis trop tard`);
+  if (late(e2)) return res(date1, `${DAY_NAMES[d2].toLowerCase()} tu finis trop tard`);
+  const m1 = e1 ? toMin(e1) : 0;
+  const m2 = e2 ? toMin(e2) : 0;
+  if (m1 === m2) return res(addDays(ws, a.tieDay), 'tu finis pareil les deux jours');
+  return m1 < m2 ? res(date1, `tu finis plus tôt le ${DAY_NAMES[d1].toLowerCase()}`) : res(date2, `tu finis plus tôt le ${DAY_NAMES[d2].toLowerCase()}`);
 }
 
 /** Trajets aller/retour autour des cours (et des activités « loin de chez moi »). */

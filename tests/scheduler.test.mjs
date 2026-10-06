@@ -94,7 +94,7 @@ test('une même tâche n’est pas planifiée deux fois dans la semaine', () => 
   const s = defaultStateForTests();
   week(s);
   week(s); // régénérer ne doit pas dupliquer
-  const asp = s.planned.filter((p) => p.name === 'Passer l’aspirateur' && p.status === 'todo');
+  const asp = s.planned.filter((p) => p.name === 'Aspirateur : salon' && p.status === 'todo');
   assert.equal(asp.length, 1);
   const vaisselle = s.planned.filter((p) => p.name.startsWith('Vaisselle'));
   assert.ok(vaisselle.length <= 7);
@@ -103,11 +103,11 @@ test('une même tâche n’est pas planifiée deux fois dans la semaine', () => 
 test('régénérer en milieu de semaine garde les tâches faites et passées', () => {
   const s = defaultStateForTests();
   week(s);
-  const asp = s.planned.find((p) => p.name === 'Passer l’aspirateur');
+  const asp = s.planned.find((p) => p.name === 'Aspirateur : salon');
   asp.status = 'done';
   const before = s.planned.filter((p) => p.date && p.date < '2026-10-08').map((p) => p.id).sort();
   week(s, '2026-10-08');
-  assert.equal(s.planned.filter((p) => p.name === 'Passer l’aspirateur').length, 1);
+  assert.equal(s.planned.filter((p) => p.name === 'Aspirateur : salon').length, 1);
   const after = s.planned.filter((p) => p.date && p.date < '2026-10-08').map((p) => p.id).sort();
   assert.deepEqual(after, before);
 });
@@ -156,7 +156,7 @@ test('une tâche bonus est proposée chaque semaine s’il reste de la place', (
 test('tâche faite par quelqu’un d’autre : remplaçants proposés, pas de doublon en régénérant', () => {
   const s = defaultStateForTests();
   week(s);
-  const asp = s.planned.find((p) => p.name === 'Passer l’aspirateur');
+  const asp = s.planned.find((p) => p.name === 'Aspirateur : salon');
   const day = asp.date;
   asp.status = 'other';
   const { room, items } = suggestReplacements(s, day);
@@ -165,7 +165,7 @@ test('tâche faite par quelqu’un d’autre : remplaçants proposés, pas de do
   assert.ok(items.every((it) => it.duration <= room && it.name !== asp.name));
   assert.ok(items.filter((it) => it.kind === 'advance').every((it) => it.from > day));
   week(s); // l'aspirateur ne doit pas être reprogrammé cette semaine
-  assert.equal(s.planned.filter((p) => p.name === 'Passer l’aspirateur').length, 1);
+  assert.equal(s.planned.filter((p) => p.name === 'Aspirateur : salon').length, 1);
   // ne compte pas dans les stats
   assert.equal(computeStats([{ date: '2026-10-05', status: 'other', duration: 10 }], '2026-10-06').percent, null);
 });
@@ -200,4 +200,27 @@ test('EDT : détection des cours ajoutés, déplacés et annulés', () => {
   const c = diffEvents(prev, next, { today: '2026-10-06', prevTo: '2026-11-01', at: 'now' });
   assert.deepEqual(c.map((x) => x.kind), ['modified', 'removed', 'added']);
   assert.equal(addDays('2026-10-06', 1), '2026-10-07');
+});
+
+test('cours d’arabe : mardi ou mercredi selon l’heure de fin des cours', async () => {
+  const { arabicPlan } = await import('../js/scheduler.js');
+  const s = defaultStateForTests();
+  s.settings.useEdt = true;
+  const plan = (mar, mer) => {
+    s.edt = { events: [
+      ...(mar ? [{ date: '2026-10-06', start: '08:00', end: mar }] : []),
+      ...(mer ? [{ date: '2026-10-07', start: '08:00', end: mer }] : []),
+    ] };
+    return arabicPlan(s, '2026-10-05').date;
+  };
+  assert.equal(plan('18:00', '16:00'), '2026-10-07'); // mardi trop tard → mercredi
+  assert.equal(plan('16:00', '18:30'), '2026-10-06'); // mercredi trop tard → mardi
+  assert.equal(plan('16:00', '16:00'), '2026-10-07'); // pareil → mercredi
+  assert.equal(plan(null, null), '2026-10-07'); // pas cours → mercredi
+  assert.equal(plan('15:00', '17:00'), '2026-10-06'); // plus tôt mardi → mardi
+  assert.equal(plan('18:00', '18:15'), null); // trop tard les deux → pas de cours
+  plan('16:00', '17:00');
+  const mardi = dayInfo(s, '2026-10-06');
+  assert.ok(mardi.blocks.some((b) => b.arabic && b.start === '20:00' && b.end === '23:00'));
+  assert.ok(!dayInfo(s, '2026-10-07').blocks.some((b) => b.arabic));
 });

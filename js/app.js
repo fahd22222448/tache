@@ -1,7 +1,9 @@
 import {
   DAY_NAMES, DAY_SHORT, addDays, fmtDate, fmtDuration, iso, toMin, todayISO, weekDates, weekStart, weekday,
 } from './dates.js';
-import { dayInfo, generateWeek, hardDay, loadOn, nextFreeDay, rollover, suggestReplacements, uid } from './scheduler.js';
+import {
+  arabicPlan, dayInfo, generateWeek, hardDay, loadOn, nextFreeDay, rollover, suggestReplacements, uid,
+} from './scheduler.js';
 import { CATEGORIES, FREQS, IMPORTANCE, defaultState, exportJSON, importJSON, load, save } from './store.js';
 import { computeStats } from './stats.js';
 import { buildICS } from './ics.js';
@@ -329,6 +331,11 @@ document.addEventListener('submit', (e) => {
         name: f.name.trim(), wake: f.wake, sleep: f.sleep, reminderTime: f.reminderTime,
         commuteMin: Number(f.commuteMin), commuteMax: Math.max(Number(f.commuteMax), Number(f.commuteMin)),
         commuteMorning: f.commuteMorning === 'on',
+        arabic: {
+          ...s.arabic, enabled: f.arabicOn === 'on', start: f.arabicStart, end: f.arabicEnd,
+          days: [Number(f.arabicDay1), Number(f.arabicDay2)], tieDay: Number(f.arabicTie),
+          lateFrom: f.arabicLate, commute: f.arabicCommute === 'on',
+        },
         maxLoad: Number(f.maxLoad), examCap: Number(f.examCap), hardDayCap: Number(f.hardDayCap),
         dailyRevision: Number(f.dailyRevision), useEdt: f.useEdt === 'on', edtUrl: f.edtUrl.trim(),
         bonusEnabled: f.bonusEnabled === 'on',
@@ -395,7 +402,7 @@ function blockRow(b) {
       : ` <small>(jusqu’à ${fmtDuration(b.max)})</small>`;
     return `<li class="blk trajet"><span class="time">${b.start}–${b.end}</span> 🚆 ${esc(b.title)}${extra}</li>`;
   }
-  return `<li class="blk ${b.kind}"><span class="time">${b.start}–${b.end}</span> ${BLOCK_ICON[b.kind] || '📌'} ${esc(b.title)}${b.room ? ` <small>${esc(b.room)}</small>` : ''}</li>`;
+  return `<li class="blk ${b.kind}"><span class="time">${b.start}–${b.end}</span> ${b.arabic ? '📖' : BLOCK_ICON[b.kind] || '📌'} ${esc(b.title)}${b.room ? ` <small>${esc(b.room)}</small>` : ''}</li>`;
 }
 
 function blocksList(info) {
@@ -497,6 +504,23 @@ function viewWeek() {
   ${days.join('')}`;
 }
 
+function arabicCard(today) {
+  const a = state.settings.arabic;
+  if (!a?.enabled) return '';
+  const row = (label, ws) => {
+    const p = arabicPlan(state, ws);
+    const what = p.date ? `<b>${fmtDate(p.date)}</b> ${a.start}–${a.end}` : '<b>Pas de cours cette semaine</b>';
+    return `<li class="row-item static"><div><span class="muted small">${label}</span><br>${what}
+      <div class="muted small">${esc(p.why)} → ${esc(p.reason)}${p.known ? '' : ' · ⚠️ EDT pas encore publié, peut changer'}</div></div></li>`;
+  };
+  const ws = weekStart(today);
+  return `<section class="card">
+    <h2>📖 ${esc(a.title)}</h2>
+    <p class="hint">Recalculé automatiquement à chaque mise à jour de l’emploi du temps.</p>
+    <ul class="list">${row('Cette semaine', ws)}${row('Semaine prochaine', addDays(ws, 7))}</ul>
+  </section>`;
+}
+
 function viewAgenda() {
   const today = todayISO();
   const edt = state.edt;
@@ -525,6 +549,7 @@ function viewAgenda() {
     ${upcoming.length ? `<ul class="list">${upcoming.map(exRow).join('')}</ul>` : '<p class="muted">Aucun contrôle à venir.</p>'}
     ${past.length ? `<details><summary>Passés (${past.length})</summary><ul class="list">${past.reverse().map(exRow).join('')}</ul></details>` : ''}
   </section>
+  ${arabicCard(today)}
   <section class="card">
     <div class="day-head"><h2>Mes activités</h2><button class="btn small primary" data-act="add-event">+ Ajouter</button></div>
     <p class="hint">Sport, sorties, travail… (les cours viennent de l’EDT automatiquement)</p>
@@ -532,12 +557,36 @@ function viewAgenda() {
   </section>`;
 }
 
+const dayOptions = (sel) => DAY_NAMES.map((n, i) => `<option value="${i}" ${sel === i ? 'selected' : ''}>${n}</option>`).join('');
+
+/** Minutes de tâches par semaine en moyenne pour ce mois-ci, à comparer au plafond. */
+function weeklyDemand(date) {
+  const per = { daily: 7, weekly: 1, biweekly: 0.5, monthly: 0.23 };
+  let total = 0;
+  for (const t of state.templates) {
+    if (t.active === false) continue;
+    let f = t.freq;
+    if (f === 'seasonal') f = (t.months || []).includes(Number(date.slice(5, 7))) ? t.every || 'monthly' : null;
+    if (f) total += Number(t.duration) * (t.fixedDay != null && f === 'daily' ? 1 : per[f]);
+  }
+  return Math.round(total);
+}
+
 function viewTasks() {
   const groups = {};
+  const demand = weeklyDemand(todayISO());
+  const capacity = state.settings.maxLoad * 7;
   for (const t of state.templates) (groups[t.category] ||= []).push(t);
   const prefBtn = (t, p, label) => `<button class="pref ${t.pref === p ? 'on' : ''}" data-act="set-pref" data-id="${t.id}" data-pref="${p}" title="${p}">${label}</button>`;
   return `
   <header class="top"><h1>Tâches</h1><button class="btn small primary" data-act="add-tpl">+ Ajouter</button></header>
+  <section class="card">
+    <div class="day-head"><strong>Charge du catalogue ce mois-ci</strong><span class="small">${fmtDuration(demand / 7)} / jour en moyenne</span></div>
+    ${loadBar(demand, capacity)}
+    <p class="hint">${demand > capacity
+    ? `⚠️ Plus que ton plafond (${state.settings.maxLoad} min/jour) : certaines tâches attendront ou iront dans « À placer ». Mets en pause des tâches ou augmente le plafond dans Réglages.`
+    : `Ça rentre dans ton plafond de ${state.settings.maxLoad} min/jour, mais il reste peu de marge les jours chargés.`}</p>
+  </section>
   <p class="hint pad">Indique ce que tu détestes 😖 (placé les jours où tu as de l’énergie) et ce qui ne te gêne pas 🙂 (placé les jours chargés).</p>
   ${Object.entries(groups).map(([k, list]) => `<section class="card">
     <h2>${cat(k).icon} ${cat(k).label}</h2>
@@ -597,6 +646,20 @@ function viewSettings() {
       </div>
       <label class="inline"><input type="checkbox" name="commuteMorning" ${s.commuteMorning !== false ? 'checked' : ''}> Compter aussi le trajet aller le matin</label>
       <p class="hint">Pour planifier, l’app prend le trajet le plus long : tu ne te retrouves jamais avec des tâches prévues alors que tu n’es pas encore rentré.</p>
+    </fieldset>
+    <fieldset>
+      <legend>📖 Cours d’arabe</legend>
+      <label class="inline"><input type="checkbox" name="arabicOn" ${s.arabic?.enabled ? 'checked' : ''}> J’ai un cours d’arabe chaque semaine</label>
+      <div class="grid2">
+        <label>Début <input type="time" name="arabicStart" value="${s.arabic?.start || '20:00'}"></label>
+        <label>Fin <input type="time" name="arabicEnd" value="${s.arabic?.end || '23:00'}"></label>
+        <label>Jour possible <select name="arabicDay1">${dayOptions(s.arabic?.days?.[0] ?? 1)}</select></label>
+        <label>ou <select name="arabicDay2">${dayOptions(s.arabic?.days?.[1] ?? 2)}</select></label>
+        <label>Si je finis pareil <select name="arabicTie">${dayOptions(s.arabic?.tieDay ?? 2)}</select></label>
+        <label>Trop tard à partir de <input type="time" name="arabicLate" value="${s.arabic?.lateFrom || '18:00'}"></label>
+      </div>
+      <label class="inline"><input type="checkbox" name="arabicCommute" ${s.arabic?.commute ? 'checked' : ''}> Compter un trajet pour y aller</label>
+      <p class="hint">Chaque semaine, l’app regarde à quelle heure finissent tes cours ces deux jours. Tu vas au cours le jour où tu finis le plus tôt. Si tu finis pareil, c’est le jour choisi ci-dessus. Si l’un des deux finit trop tard, c’est l’autre jour. Si les deux finissent trop tard, il n’y a pas de cours cette semaine.</p>
     </fieldset>
     <label class="inline"><input type="checkbox" name="useEdt" ${s.useEdt ? 'checked' : ''}> Synchroniser l’emploi du temps de l’IUT</label>
     <label>Adresse des données EDT <input name="edtUrl" value="${esc(s.edtUrl)}"></label>
