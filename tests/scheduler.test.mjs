@@ -262,3 +262,42 @@ test('temps libre restant compté à partir de maintenant', async () => {
   assert.equal(freeAfter(s, info, 13 * 60 + 32), 23 * 60 - (18 * 60 + 10));
   assert.equal(freeAfter(s, info, 7 * 60), info.free);
 });
+
+test('le week-end reçoit les grosses tâches', async () => {
+  const { isBig } = await import('../js/scheduler.js');
+  const s = defaultStateForTests();
+  week(s);
+  const weekend = ['2026-10-10', '2026-10-11'];
+  const big = s.planned.filter((p) => p.status === 'todo' && p.date && !p.locked && isBig(s, p));
+  const onWeekend = big.filter((p) => weekend.includes(p.date)).reduce((a, p) => a + p.duration, 0);
+  const total = big.reduce((a, p) => a + p.duration, 0);
+  assert.ok(onWeekend / total >= 0.5, `${onWeekend}/${total} min de grosses tâches le week-end`);
+  assert.equal(dayInfo(s, '2026-10-10').rawCap, 90);
+});
+
+test('trajets réels PRIM : heure de départ et de retour utilisées sauf avec maman', async () => {
+  const { simplifyJourney } = await import('../scripts/trips.mjs');
+  const aller = simplifyJourney({
+    departure_date_time: '20261006T110700', arrival_date_time: '20261006T124500', duration: 5880, nb_transfers: 1,
+    sections: [
+      { type: 'street_network', duration: 420 },
+      { type: 'public_transport', departure_date_time: '20261006T111400', arrival_date_time: '20261006T113000', from: { name: 'Mairie' }, to: { name: 'Gare' }, display_informations: { commercial_mode: 'Bus', code: '6', color: 'FF0000', direction: 'Gare' } },
+      { type: 'public_transport', departure_date_time: '20261006T114000', arrival_date_time: '20261006T123500', from: { name: 'Gare' }, to: { name: 'Vélizy' }, display_informations: { commercial_mode: 'RER', code: 'C' } },
+      { type: 'street_network', duration: 600 },
+    ],
+  });
+  assert.deepEqual([aller.leave, aller.arrive, aller.duration, aller.walk, aller.legs.map((l) => l.line)], ['11:07', '12:45', 98, 17, ['6', 'C']]);
+  const s = defaultStateForTests();
+  s.settings.useEdt = true;
+  s.settings.arabic.enabled = false;
+  s.edt = {
+    events: [{ date: '2026-10-06', start: '13:00', end: '16:30', title: 'Cours' }],
+    trips: { '2026-10-06': { aller, retour: { leave: '16:38', arrive: '17:52', duration: 74, legs: [] } } },
+  };
+  const blocks = dayInfo(s, '2026-10-06').blocks;
+  const a = blocks.find((b) => b.dir === 'aller');
+  const r = blocks.find((b) => b.dir === 'retour');
+  assert.deepEqual([a.start, a.journey.legs.length, r.homeAt], ['11:07', 2, '17:52']);
+  s.rides = { '2026-10-06|retour': true };
+  assert.equal(dayInfo(s, '2026-10-06').blocks.find((b) => b.dir === 'retour').homeAt, '17:15');
+});

@@ -7,6 +7,7 @@ on:
   # Les heures sont en UTC : 5:00 UTC = 6h00 en hiver / 7h00 en été (heure de Paris).
   # GitHub peut décaler l'exécution de quelques minutes.
   schedule:
+    - cron: '15 4 * * 1-5' # 5h15 (hiver) — trajet du matin en temps réel
     - cron: '0 5 * * *'    # 6h00 (hiver) — avant les cours
     - cron: '0 11 * * *'   # 12h00 (hiver) — pause de midi
     - cron: '30 17 * * *'  # 18h30 (hiver) — pour le lendemain
@@ -49,6 +50,10 @@ jobs:
           EDT_BASE: ${{ vars.EDT_BASE || 'https://edt.iut-velizy.uvsq.fr' }}
           PREVIOUS_URL: ${{ steps.pages.outputs.base_url }}/edt.json
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          PRIM_API_KEY: ${{ secrets.PRIM_API_KEY }}
+          HOME_ADDRESS: ${{ vars.HOME_ADDRESS }}
+          IUT_ADDRESS: ${{ vars.IUT_ADDRESS }}
+          ARRIVE_MARGIN: ${{ vars.ARRIVE_MARGIN }}
         run: node scripts/fetch-edt.mjs --out _site/edt.json
 
       - uses: actions/upload-pages-artifact@v3

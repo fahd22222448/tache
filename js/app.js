@@ -80,8 +80,26 @@ function notify(title, body, tag) {
   } else new Notification(title, opts);
 }
 
+function departureReminder(now) {
+  const today = iso(now);
+  const sent = state.meta.lastNotified || (state.meta.lastNotified = {});
+  if (sent.leave === today || state.rides?.[`${today}|aller`]) return;
+  const aller = dayInfo(state, today).blocks.find((b) => b.dir === 'aller' && b.journey);
+  if (!aller) return;
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const leave = toMin(aller.journey.leave);
+  if (minutes >= leave - 15 && minutes < leave) {
+    const l = aller.journey.legs[0];
+    notify(`🚌 Pars dans ${leave - minutes} min (${aller.journey.leave})`,
+      l ? `${l.mode} ${l.line} à ${l.dep} — ${l.from}. Arrivée ${aller.journey.arrive}.` : `Arrivée ${aller.journey.arrive}.`, 'leave');
+    sent.leave = today;
+    save(state);
+  }
+}
+
 function tick() {
   dailyMaintenance();
+  if (state.settings.notifications) departureReminder(new Date());
   // Le temps libre restant dépend de l'heure : on rafraîchit la page du jour.
   if (ui.tab === 'today' && !ui.sheet && document.visibilityState === 'visible') render();
   if (!state.settings.notifications) return;
@@ -364,7 +382,7 @@ document.addEventListener('submit', (e) => {
           days: [Number(f.arabicDay1), Number(f.arabicDay2)], tieDay: Number(f.arabicTie),
           lateFrom: f.arabicLate, commute: f.arabicCommute === 'on',
         },
-        maxLoad: Number(f.maxLoad), examCap: Number(f.examCap), hardDayCap: Number(f.hardDayCap),
+        maxLoad: Number(f.maxLoad), weekendLoad: Number(f.weekendLoad), examCap: Number(f.examCap), hardDayCap: Number(f.hardDayCap),
         dailyRevision: Number(f.dailyRevision), useEdt: f.useEdt === 'on', edtUrl: f.edtUrl.trim(),
         bonusEnabled: f.bonusEnabled === 'on',
       });
@@ -423,12 +441,32 @@ function edtBanner(today) {
 
 const BLOCK_ICON = { cours: '🎓', trajet: '🚆', event: '📌' };
 
+const MODE_ICON = (m) => (/bus/i.test(m) ? '🚌' : /m[ée]tro/i.test(m) ? '🚇' : /tram/i.test(m) ? '🚊' : /rer|train|transilien|ter/i.test(m) ? '🚆' : '🚍');
+
+function journeyHtml(b) {
+  const j = b.journey;
+  const legs = j.legs.map((l) => {
+    const chip = `<span class="line" style="${l.color ? `background:${l.color};color:${l.textColor || '#fff'}` : ''}">${MODE_ICON(l.mode)} ${esc(l.mode)} ${esc(l.line)}</span>`;
+    return `<li>${chip} <b>${l.dep}</b> ${esc(l.from)} → ${esc(l.to)} <span class="muted">${l.arr}</span>${l.direction ? `<br><small class="muted">direction ${esc(l.direction)}</small>` : ''}${l.realtime ? ' <small class="live">● temps réel</small>' : ''}</li>`;
+  }).join('');
+  const ti = state.edt?.tripsInfo || {};
+  const [o, d] = b.dir === 'aller' ? [ti.home, ti.iut] : [ti.iut, ti.home];
+  const maps = o && d ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(o)}&destination=${encodeURIComponent(d)}&travelmode=transit` : null;
+  return `<div class="journey">
+    <p class="small">${b.dir === 'aller' ? `🚶 Pars de chez toi à <b>${j.leave}</b>` : `Départ <b>${j.leave}</b>`} · arrivée ${j.arrive} · ${fmtDuration(j.duration)}${j.walk ? ` dont ${j.walk} min à pied` : ''}</p>
+    <ul class="legs">${legs}</ul>
+    <div class="row">${maps ? `<a class="btn small" href="${maps}" target="_blank" rel="noopener">🗺️ Itinéraire</a>` : ''}<a class="btn small" href="https://www.iledefrance-mobilites.fr/itineraires" target="_blank" rel="noopener">IDF Mobilités</a></div>
+  </div>`;
+}
+
 function blockRow(b) {
   if (b.kind === 'trajet') {
-    const how = b.mom ? '🚗' : '🚆';
+    const how = b.mom ? '🚗' : b.journey ? MODE_ICON(b.journey.legs[0]?.mode || '') : '🚆';
     const extra = b.homeAt ? ` <small>· ${fmtDuration(b.duration)} → à la maison vers ${b.homeAt}</small>` : ` <small>· ${fmtDuration(b.duration)}</small>`;
-    return `<li class="blk trajet ${b.mom ? 'mom' : ''}"><div class="trajet-row"><div><span class="time">${b.start}–${b.end}</span> ${how} ${esc(b.title)}${extra}</div>
-      <button class="ride ${b.mom ? 'on' : ''}" data-act="ride" data-key="${b.date}|${b.dir}" aria-pressed="${b.mom}">${b.mom ? '✓ ' : ''}Avec maman</button></div></li>`;
+    const lead = b.dir === 'aller' && b.journey ? ` <small>· pars à <b>${b.journey.leave}</b></small>` : extra;
+    return `<li class="blk trajet ${b.mom ? 'mom' : ''}"><div class="trajet-row"><div><span class="time">${b.start}–${b.end}</span> ${how} ${esc(b.title)}${lead}</div>
+      <button class="ride ${b.mom ? 'on' : ''}" data-act="ride" data-key="${b.date}|${b.dir}" aria-pressed="${b.mom}">${b.mom ? '✓ ' : ''}Avec maman</button></div>
+      ${b.journey ? `<details class="jdetails"${b.dir === 'aller' && b.date === todayISO() ? ' open' : ''}><summary>Détail du trajet</summary>${journeyHtml(b)}</details>` : ''}</li>`;
   }
   if (b.kind === 'cours') {
     return `<li class="blk cours"><span class="time">${b.start}–${b.end}</span>
@@ -438,9 +476,17 @@ function blockRow(b) {
   return `<li class="blk ${b.kind}"><span class="time">${b.start}–${b.end}</span> ${b.arabic ? '📖' : BLOCK_ICON[b.kind] || '📌'} ${esc(b.title)}${b.room ? ` <small>${esc(b.room)}</small>` : ''}</li>`;
 }
 
-function blocksList(info) {
+function blocksList(info, extra = null) {
+  const visible = info.blocks.filter((b) => !b.hidden);
+  const rows = visible.map(blockRow);
+  if (extra) {
+    // Les tâches se placent dans la journée à partir du retour à la maison.
+    let i = extra.at ? visible.findIndex((b) => toMin(b.start) >= toMin(extra.at) && b.kind !== 'trajet') : 0;
+    if (i < 0) i = rows.length;
+    rows.splice(i, 0, extra.html);
+  }
   const items = [
-    ...info.blocks.filter((b) => !b.hidden).map(blockRow),
+    ...rows,
     ...info.revisions.map((r) => `<li class="blk rev"><span class="time">${fmtDuration(r.minutes)}</span> 📚 Réviser ${esc(r.subject)}</li>`),
     ...info.exams.map((x) => `<li class="blk exam"><span class="time">!</span> 📝 ${x.kind === 'devoir' ? 'Devoir à rendre' : 'Contrôle'} : ${esc(x.subject)}</li>`),
   ];
@@ -453,6 +499,25 @@ function shiftProg(n) {
   if (ui.progDate === todayISO()) ui.progDate = null;
   ui.slide = n > 0 ? 'from-right' : 'from-left';
   render();
+}
+
+function tasksBlock(date, info) {
+  const today = todayISO();
+  const tasks = state.planned.filter((p) => p.date === date && ['todo', 'done', 'other'].includes(p.status));
+  const left = tasks.filter((p) => p.status === 'todo').reduce((a, p) => a + Number(p.duration), 0);
+  const home = info.blocks.find((b) => b.dir === 'retour');
+  const at = home?.homeAt || null;
+  const tomorrowFixed = state.planned.filter((p) => p.date === addDays(date, 1) && p.locked && p.status === 'todo');
+  const isHard = state.hardDays.includes(date);
+  const html = `<li class="blk tasks-blk">
+    <div class="day-head"><strong>🧹 Tâches${left ? ` · ${fmtDuration(left)}` : ''}</strong><span class="muted small">${at ? `à partir de ${at}` : ''}</span></div>
+    ${tasks.length ? `<ul class="tasks">${tasks.map((p) => taskRow(p)).join('')}</ul>` : `<p class="muted small">Aucune tâche ${date === today ? 'aujourd’hui' : 'ce jour-là'}. 🙂</p>`}
+    ${tomorrowFixed.length ? `<p class="hint">🔔 Le lendemain : ${tomorrowFixed.map((p) => esc(p.name)).join(', ')}.</p>` : ''}
+    ${date >= today ? `<div class="row">${isHard
+    ? `<button class="btn small" data-act="undo-hard-day" data-date="${date}">Annuler « journée difficile »</button>`
+    : `<button class="btn soft small" data-act="hard-day" data-date="${date}">😮‍💨 Journée difficile</button>`}</div>` : ''}
+  </li>`;
+  return { html, at };
 }
 
 function programCard() {
@@ -470,7 +535,7 @@ function programCard() {
         ${date !== today ? `<button class="link small" data-act="prog-today">Revenir à aujourd’hui</button>` : '<span class="muted small">aujourd’hui</span>'}</div>
       <button class="icon-btn" data-act="prog-next" aria-label="Jour suivant">›</button>
     </div>
-    <div class="prog-body ${slide}">${blocksList(info)}</div>
+    <div class="prog-body ${slide}">${blocksList(info, tasksBlock(date, info))}</div>
   </section>`;
 }
 
@@ -481,8 +546,6 @@ function viewToday() {
   const load = loadOn(state.planned, today);
   const remaining = tasks.filter((p) => p.status === 'todo').reduce((a, p) => a + Number(p.duration), 0);
   const unplaced = state.planned.filter((p) => p.status === 'todo' && !p.date);
-  const tomorrowFixed = state.planned.filter((p) => p.date === addDays(today, 1) && p.locked && p.status === 'todo');
-  const isHard = state.hardDays.includes(today);
   const homeBack = info.blocks.find((b) => b.title === 'Trajet retour');
   const now = new Date();
   const freeLeft = Math.max(0, freeAfter(state, info, now.getHours() * 60 + now.getMinutes()) - remaining);
@@ -495,23 +558,13 @@ function viewToday() {
   ${weekEmpty ? `<section class="card banner"><strong>Ta semaine n'est pas encore planifiée.</strong><button class="btn primary" data-act="generate" data-ws="${ws}">✨ Générer ma semaine</button></section>` : ''}
   ${programCard()}
   <section class="card">
-    <h2>Mes tâches du jour</h2>
-    ${tasks.length ? `<ul class="tasks">${tasks.map((p) => taskRow(p)).join('')}</ul>` : '<p class="muted">Aucune tâche aujourd’hui. Profite ! 🙂</p>'}
-    ${tomorrowFixed.length ? `<p class="hint">🔔 Demain : ${tomorrowFixed.map((p) => esc(p.name)).join(', ')} — pense à préparer ce soir.</p>` : ''}
-    <div class="row">
-      ${isHard
-    ? `<button class="btn small" data-act="undo-hard-day" data-date="${today}">Annuler « journée difficile »</button>`
-    : `<button class="btn soft" data-act="hard-day" data-date="${today}">😮‍💨 Journée difficile</button>`}
-    </div>
-  </section>
-  <section class="card">
     <div class="stats3">
       <div><b>${fmtDuration(freeLeft)}</b><small>temps libre restant</small></div>
       <div><b>${fmtDuration(remaining)}</b><small>de tâches à faire</small></div>
       <div><b>${load}/${info.cap}</b><small>min (plafond)</small></div>
     </div>
     ${loadBar(load, info.cap)}
-    ${info.capReason ? `<p class="hint">⚖️ Charge réduite : ${esc(info.capReason)}</p>` : ''}
+    ${info.capReason ? `<p class="hint">⚖️ ${esc(info.capReason)}</p>` : ''}
     ${homeBack ? `<p class="hint">🏠 Retour à la maison vers ${homeBack.homeAt}${homeBack.mom ? ' (avec maman)' : ''} : tes tâches sont pour après.</p>` : ''}
   </section>
   ${unplaced.length ? `<section class="card warn"><h2>À placer (${unplaced.length})</h2><p class="hint">Ces tâches ne rentrent pas sous ton plafond. Déplace-les à la main ou supprime-les.</p><ul class="tasks">${unplaced.map((p) => taskRow(p)).join('')}</ul></section>` : ''}`;
@@ -599,6 +652,9 @@ function viewAgenda() {
     ${!state.settings.useEdt ? '<p class="muted">Synchronisation désactivée (Réglages).</p>'
     : edt ? `<p class="small">Groupe <b>${esc(edt.group)}</b> · ${edt.events.length} cours du ${edt.range ? `${fmtDate(edt.range.from, false)} au ${fmtDate(edt.range.to, false)}` : ''}</p>
       <p class="muted small">Dernière vérification : ${edt.checkedAt ? new Date(edt.checkedAt).toLocaleString('fr-FR') : '—'}${edt.ok === false ? ` · ⚠️ échec : ${esc(edt.error)}` : ''}</p>
+      <p class="small">${edt.tripsInfo?.ok || Object.keys(edt.trips || {}).length
+    ? `🚌 Trajets IDF Mobilités calculés pour ${Object.keys(edt.trips || {}).length} jour(s) de cours${edt.tripsInfo?.home ? ` · départ : ${esc(edt.tripsInfo.home)}` : ''}${edt.tripsInfo?.error ? ` · ⚠️ ${esc(edt.tripsInfo.error)}` : ''}`
+    : `🚌 Trajets IDF Mobilités : ${esc(edt.tripsInfo?.error || 'pas encore configurés')}`}</p>
       ${changes.length ? `<details><summary>Derniers changements détectés</summary><ul class="changes">${changes.map((c) => `<li><small>${new Date(c.at).toLocaleDateString('fr-FR')}</small> ${esc(describeChange(c))}</li>`).join('')}</ul></details>` : ''}`
       : `<p class="muted">${ui.edtError ? `⚠️ ${esc(ui.edtError)}` : 'Chargement…'}</p>`}
   </section>
@@ -689,6 +745,7 @@ function viewSettings() {
     </div>
     <div class="grid2">
       <label>Charge max / jour (min) <input type="number" name="maxLoad" min="0" max="300" value="${s.maxLoad}"></label>
+      <label>Le week-end (min) <input type="number" name="weekendLoad" min="0" max="300" value="${s.weekendLoad ?? 90}"></label>
       <label>Les jours de contrôle (min) <input type="number" name="examCap" min="0" max="300" value="${s.examCap}"></label>
     </div>
     <div class="grid2">

@@ -107,6 +107,7 @@ export function defaultState() {
       wake: '07:00',
       sleep: '23:00',
       maxLoad: 45,
+      weekendLoad: 90,
       examCap: 20,
       hardDayCap: 10,
       dailyRevision: 0,

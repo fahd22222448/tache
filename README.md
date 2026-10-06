@@ -33,6 +33,8 @@ Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de 
 
 **Déjà faite par quelqu'un d'autre** : dans le menu `⋯` d'une tâche. Elle compte comme faite (elle ne revient pas avant sa prochaine échéance) sans entrer dans tes statistiques. L'app propose ensuite quoi faire à la place avec le temps libéré : avancer une tâche des jours suivants, ajouter une tâche du catalogue qui n'est pas prévue prochainement, ou faire une idée bonus. Tu peux aussi garder ce temps libre.
 
+**Week-end** : plafond plus haut (90 min par défaut, réglable). Les grosses tâches (20 min ou plus, ou pénibles) y sont placées en priorité.
+
 **Tâche bonus** : une petite action en plus est proposée chaque semaine, s'il reste de la place sous le plafond.
 
 ## Mise en ligne (une seule fois)
@@ -50,6 +52,25 @@ Le workflow `.github/workflows/pages.yml` tourne à **6h00, 12h00 et 18h30** (he
 - **Notification push quand l'EDT change**, même si l'app est fermée : installe l'app [ntfy](https://ntfy.sh) et abonne-toi à un nom de sujet secret (par exemple `edt-rt3-xxxx`). Ajoute ensuite ce nom dans **Settings → Secrets and variables → Actions** sous le secret `NTFY_TOPIC`.
 - Pour un autre groupe, crée la variable `EDT_GROUP` (même endroit, onglet *Variables*).
 - GitHub met en pause les tâches planifiées après 60 jours sans activité sur le dépôt. Un commit ou un *Run workflow* les relance.
+
+### Trajets en transports (IDF Mobilités / PRIM)
+
+Pour chaque jour de cours des 7 prochains jours, la même GitHub Action calcule :
+- **l'aller** : heure de départ de chez toi pour arriver 10 min avant le premier cours ;
+- **le retour** : départ 5 min après le dernier cours, et heure d'arrivée à la maison.
+
+Le calcul passe par l'API Navitia de [PRIM](https://prim.iledefrance-mobilites.fr), avec les données temps réel.
+
+Dans l'app, le trajet affiche les lignes, les arrêts et les horaires, avec un bouton d'itinéraire. Une notification « Pars dans 15 min » arrive avant le départ, et l'export `.ics` contient les départs avec une alarme. Si « Avec maman » est coché, le trajet calculé est remplacé par 45 min.
+
+À configurer dans **Settings → Secrets and variables → Actions** :
+
+| Nom | Où | Valeur |
+|---|---|---|
+| `PRIM_API_KEY` | *Secrets* | ta clé PRIM |
+| `HOME_ADDRESS` | *Variables* | ton adresse, ton arrêt de départ ou `lat,lon` |
+| `IUT_ADDRESS` | *Variables* (optionnel) | par défaut 10 avenue de l'Europe, Vélizy |
+| `ARRIVE_MARGIN` | *Variables* (optionnel) | minutes d'avance avant le cours (10) |
 
 Test en local : `npm run edt` écrit `edt.json` à la racine.
 

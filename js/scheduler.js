@@ -46,7 +46,7 @@ export function blocksOn(state, date) {
     const a = state.settings.arabic;
     blocks.push({ kind: 'event', title: a.title || 'Cours d’arabe', start: a.start, end: a.end, away: !!a.commute, arabic: true });
   }
-  blocks.push(...commuteBlocks(state.settings, blocks.filter((b) => b.away), state.rides || {}, date));
+  blocks.push(...commuteBlocks(state.settings, blocks.filter((b) => b.away), state.rides || {}, date, state.edt?.trips?.[date]));
   return blocks.sort((a, b) => toMin(a.start) - toMin(b.start));
 }
 
@@ -89,8 +89,9 @@ export function arabicPlan(state, date) {
  * Trajets aller/retour autour des cours (et des activités « loin de chez moi »).
  * Avec maman (voiture) : trajet court (45 min). Sinon : trajet long (1 h 40).
  * `rides` = { "YYYY-MM-DD|aller": true, "YYYY-MM-DD|retour": true } pour les trajets avec maman.
+ * `trip` = trajets réels calculés par PRIM (IDF Mobilités) : utilisés quand tu n'es pas avec maman.
  */
-export function commuteBlocks(settings, away, rides = {}, date = '') {
+export function commuteBlocks(settings, away, rides = {}, date = '', trip = null) {
   const max = Number(settings.commuteMax) || 0;
   if (!away.length || max <= 0) return [];
   const min = Math.min(Number(settings.commuteMin) || max, max);
@@ -99,12 +100,15 @@ export function commuteBlocks(settings, away, rides = {}, date = '') {
   const out = [];
   const momA = !!rides[`${date}|aller`];
   const momR = !!rides[`${date}|retour`];
+  const real = (j, ok) => (j && ok && j.duration > 0 && j.duration <= 240 ? j : null);
   if (settings.commuteMorning !== false) {
-    const d = momA ? min : max;
-    out.push({ kind: 'trajet', dir: 'aller', date, mom: momA, title: 'Trajet aller', start: fromMin(Math.max(0, first - d)), end: fromMin(first), duration: d });
+    const j = momA ? null : real(trip?.aller, trip?.aller?.leave < fromMin(first));
+    const d = j ? first - toMin(j.leave) : momA ? min : max;
+    out.push({ kind: 'trajet', dir: 'aller', date, mom: momA, journey: j, title: 'Trajet aller', start: fromMin(Math.max(0, first - d)), end: fromMin(first), duration: d });
   }
-  const d = momR ? min : max;
-  out.push({ kind: 'trajet', dir: 'retour', date, mom: momR, title: 'Trajet retour', start: fromMin(last), end: fromMin(last + d), duration: d, homeAt: fromMin(last + d) });
+  const j = momR ? null : real(trip?.retour, trip?.retour?.arrive > fromMin(last));
+  const d = j ? toMin(j.arrive) - last : momR ? min : max;
+  out.push({ kind: 'trajet', dir: 'retour', date, mom: momR, journey: j, title: 'Trajet retour', start: fromMin(last), end: fromMin(last + d), duration: d, homeAt: fromMin(last + d) });
   if (last > first) out.push({ kind: 'absent', title: 'Hors de la maison', start: fromMin(first), end: fromMin(last), hidden: true });
   return out;
 }
@@ -157,8 +161,9 @@ export function revisionsOn(state, date) {
 export function capFor(state, date) {
   const s = state.settings;
   if ((state.hardDays || []).includes(date)) return { cap: Number(s.hardDayCap), reason: 'Journée difficile' };
-  let cap = Number(s.maxLoad);
-  let reason = null;
+  const weekend = weekday(date) >= 5;
+  let cap = weekend ? Number(s.weekendLoad ?? 90) : Number(s.maxLoad);
+  let reason = weekend ? 'Week-end : place aux grosses tâches' : null;
   for (const ex of state.exams) {
     const k = diffDays(date, ex.date);
     let c = null;
@@ -235,10 +240,17 @@ function scoreDay(state, ctx, item, date, idx, earlyWeight) {
     if (same(date)) s += 2;
     if (same(addDays(date, -1)) || same(addDays(date, 1))) s += 0.6;
   }
+  // Week-end : on y met en priorité les grosses tâches (≥ 20 min ou pénibles).
+  if (weekday(date) >= 5 && p.freq !== 'daily') s += isBig(state, item) ? -0.6 : 0.3;
   if (p.hate) s += (1 - info.energy) * 0.8;
   if (p.easy) s += info.energy * 0.3;
   s += idx * earlyWeight;
   return s;
+}
+
+export function isBig(state, item) {
+  const tpl = state.templates.find((t) => t.id === item.templateId);
+  return Number(item.duration) >= 20 || (tpl?.difficulty ?? 1) >= 3;
 }
 
 function makeCtx(state, planned, dates) {
