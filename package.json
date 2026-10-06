@@ -1,0 +1,12 @@
+{
+  "name": "tache",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Planifie les tâches de la maison et du jardin autour des cours et des contrôles.",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "start": "python3 -m http.server 8080",
+    "edt": "node scripts/fetch-edt.mjs --out edt.json"
+  }
+}

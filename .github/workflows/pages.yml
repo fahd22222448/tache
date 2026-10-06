@@ -1,0 +1,66 @@
+name: Publier l'app et synchroniser l'EDT
+
+on:
+  push:
+    branches: [main]
+  # Vérification de l'emploi du temps à heures fixes.
+  # Les heures sont en UTC : 5:00 UTC = 6h00 en hiver / 7h00 en été (heure de Paris).
+  # GitHub peut décaler l'exécution de quelques minutes.
+  schedule:
+    - cron: '0 5 * * *'    # 6h00 (hiver) — avant les cours
+    - cron: '0 11 * * *'   # 12h00 (hiver) — pause de midi
+    - cron: '30 17 * * *'  # 18h30 (hiver) — pour le lendemain
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tests
+        run: npm test
+
+      - name: Configurer Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Préparer le site
+        run: |
+          mkdir -p _site
+          cp -r index.html styles.css manifest.webmanifest icon.svg sw.js js _site/
+
+      - name: Récupérer l'emploi du temps
+        env:
+          EDT_GROUP: ${{ vars.EDT_GROUP || 'RT3-FA' }}
+          EDT_BASE: ${{ vars.EDT_BASE || 'https://edt.iut-velizy.uvsq.fr' }}
+          PREVIOUS_URL: ${{ steps.pages.outputs.base_url }}/edt.json
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: node scripts/fetch-edt.mjs --out _site/edt.json
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

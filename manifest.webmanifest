@@ -1,0 +1,14 @@
+{
+  "name": "Tâche — ma semaine",
+  "short_name": "Tâche",
+  "description": "Planifie les tâches de la maison autour de tes cours.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f6fb",
+  "theme_color": "#4f46e5",
+  "lang": "fr",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
