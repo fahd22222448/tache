@@ -107,7 +107,7 @@ export function normalizeEvent(raw, group = GROUP, side = null) {
   };
 }
 
-export async function fetchCelcat({ from, to, group = GROUP, base = BASE }) {
+export async function fetchCelcat({ from, to, group = GROUP, base = BASE, prevEvents = [] }) {
   const body = new URLSearchParams({
     start: from,
     end: to,
@@ -137,15 +137,19 @@ export async function fetchCelcat({ from, to, group = GROUP, base = BASE }) {
   }
   if (!Array.isArray(data)) throw new Error('Réponse Celcat inattendue');
   // Fiche détaillée de chaque cours (salle, type, matière) : plus fiable que la description.
-  const sides = await mapLimit(data, 5, (e) => fetchSideBar(e.id, base).catch(() => null));
-  const okSides = sides.filter(Boolean).length;
-  console.log(`Fiches détaillées : ${okSides}/${data.length}`);
-  if (data.length) {
-    console.log('Exemple brut :', JSON.stringify({ ...data[0], description: data[0]?.description }).slice(0, 600));
-    if (sides[0]) console.log('Exemple fiche :', JSON.stringify(sides[0]).slice(0, 800));
-  }
+  // Un cours identique à la dernière vérification (même id, horaires et description) réutilise
+  // sa fiche déjà lue : on ne sollicite le serveur de l'IUT que pour ce qui a changé.
+  const prevById = new Map(prevEvents.map((e) => [e.id, e]));
+  const reused = data.map((e) => {
+    const p = prevById.get(String(e.id));
+    const fresh = normalizeEvent(e, group);
+    return p && p.date === fresh.date && p.start === fresh.start && p.end === fresh.end
+      && JSON.stringify(p.details) === JSON.stringify(fresh.details) ? p : null;
+  });
+  const sides = await mapLimit(data, 5, (e, i) => (reused[i] ? null : fetchSideBar(e.id, base).catch(() => null)));
+  console.log(`Fiches détaillées : ${sides.filter(Boolean).length} lues, ${reused.filter(Boolean).length} réutilisées / ${data.length}`);
   return data
-    .map((e, i) => normalizeEvent(e, group, sides[i]))
+    .map((e, i) => reused[i] || normalizeEvent(e, group, sides[i]))
     .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
 }
 
@@ -155,7 +159,7 @@ async function mapLimit(items, limit, fn) {
   const worker = async () => {
     while (next < items.length) {
       const i = next++;
-      out[i] = await fn(items[i]);
+      out[i] = await fn(items[i], i);
     }
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
@@ -250,7 +254,7 @@ async function main() {
 
   let result;
   try {
-    const events = await fetchCelcat({ from, to });
+    const events = await fetchCelcat({ from, to, prevEvents: prev?.group === GROUP && prev?.parserVersion === PARSER_VERSION ? prev.events || [] : [] });
     // Changement de groupe ou de lecture : on repart de zéro au lieu de tout signaler comme modifié.
     const comparable = prev?.events?.length && prev.group === GROUP && prev.parserVersion === PARSER_VERSION;
     for (const e of events.slice(0, 12)) console.log(`  ${e.date} ${e.start}-${e.end} [${e.type}] ${e.title} @ ${e.room || '?'} (${e.teachers.join(', ')})`);

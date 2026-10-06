@@ -25,7 +25,7 @@ export function uid(prefix = 'id') {
  * Créneaux occupés d'une date : événements perso, cours de l'EDT et trajets. Entre le départ et le retour, tu n'es pas à la maison : ce temps est compté
  * comme occupé (bloc « absent », non affiché).
  */
-export function blocksOn(state, date) {
+export function blocksOn(state, date, opts = {}) {
   const wd = weekday(date);
   const blocks = [];
   for (const e of state.events) {
@@ -47,7 +47,109 @@ export function blocksOn(state, date) {
     blocks.push({ kind: 'event', title: a.title || 'Cours d’arabe', start: a.start, end: a.end, away: !!a.commute, arabic: true });
   }
   blocks.push(...commuteBlocks(state.settings, blocks.filter((b) => b.away), state.rides || {}, date, state.edt?.trips?.[date]));
+  // Salle de sport : séances fixes du week-end + séance en plus choisie en semaine.
+  const g = state.settings.gym;
+  if (g?.enabled) {
+    const dur = Number(g.duration || 90);
+    const travel = Number(g.travel || 0);
+    if (g.weekend !== false && (g.weekendDays || [5, 6]).includes(wd)) {
+      const st = toMin(g.weekendStart || '10:00');
+      blocks.push({ kind: 'sport', title: 'Salle de sport', start: fromMin(st - travel), end: fromMin(st + dur + travel), travel });
+    } else if (!opts.noGym && wd < 5) {
+      const plan = gymPlan(state, date);
+      if (plan?.chosen?.date === date) {
+        const { slot } = plan.chosen;
+        blocks.push({ kind: 'sport', title: 'Salle de sport · séance en plus', start: slot.from, end: slot.to, travel, extra: true, plan });
+      }
+    }
+  }
   return blocks.sort((a, b) => toMin(a.start) - toMin(b.start));
+}
+
+/** Premier créneau libre pour une séance de sport ce jour-là (après le retour à la maison). */
+export function gymSlot(state, date, blocks) {
+  const s = state.settings;
+  const g = s.gym || {};
+  const dur = Number(g.duration || 90);
+  const travel = Number(g.travel || 0);
+  const need = dur + 2 * travel;
+  const home = blocks.find((b) => b.dir === 'retour');
+  let lo = toMin(s.wake) + 60;
+  lo = Math.max(lo, home ? toMin(home.homeAt) + 15 : toMin(g.freeDayFrom || '10:00'));
+  let hi = toMin(s.sleep);
+  if (hi <= toMin(s.wake)) hi += 1440;
+  hi -= 30;
+  const busy = blocks.map((b) => {
+    const a = toMin(b.start);
+    let e = toMin(b.end);
+    if (e <= a) e += 1440;
+    return [a, e];
+  });
+  for (let t = Math.ceil(lo / 15) * 15; t + need <= hi; t += 15) {
+    if (busy.every(([a, e]) => t + need <= a || t >= e)) {
+      return { from: fromMin(t), to: fromMin(t + need), start: fromMin(t + travel), end: fromMin(t + travel + dur) };
+    }
+  }
+  return null;
+}
+
+// Espacement avec les séances du samedi et du dimanche : mercredi est le plus loin des deux.
+const GYM_SPACING = [2, 1, 0, 1, 2];
+
+/**
+ * Meilleur jour (lundi → vendredi) pour la séance de sport en plus, recalculé chaque semaine :
+ * il faut un créneau libre après le retour ; on préfère le milieu de semaine (récupération),
+ * on évite le soir du cours d'arabe, le jour et la veille d'un contrôle, et les séances tardives.
+ */
+export function gymPlan(state, date) {
+  const g = state.settings.gym;
+  if (!g?.enabled || g.weekday === false) return null;
+  const ws = weekStart(date);
+  const options = [];
+  for (let i = 0; i < 5; i += 1) {
+    const d = addDays(ws, i);
+    const blocks = blocksOn(state, d, { noGym: true });
+    const slot = gymSlot(state, d, blocks);
+    if (!slot) {
+      options.push({ date: d, day: i, slot: null, score: Infinity, why: ['pas de créneau libre'] });
+      continue;
+    }
+    let score = GYM_SPACING[i];
+    const why = [];
+    if (i === 2) why.push('bien espacé des séances du week-end');
+    else if (i === 0) why.push('lendemain de la séance de dimanche');
+    else if (i === 4) why.push('veille de la séance de samedi');
+    if (blocks.some((b) => b.arabic)) {
+      score += 3;
+      why.push('soir de cours d’arabe');
+    }
+    for (const ex of state.exams) {
+      const k = diffDays(d, ex.date);
+      if (k === 0 || k === 1) {
+        score += 3;
+        why.push(k === 0 ? `contrôle de ${ex.subject}` : `veille du contrôle de ${ex.subject}`);
+      }
+    }
+    const cours = blocks.filter((b) => b.kind === 'cours');
+    if (!cours.length) {
+      score -= 1;
+      why.push('pas cours');
+    } else if (cours.some((b) => toMin(b.end) >= toMin('17:30'))) {
+      score += 0.5;
+      why.push('longue journée');
+    }
+    if (toMin(slot.start) >= toMin('20:00')) {
+      score += 1;
+      why.push('séance tardive');
+    }
+    if (!why.length) why.push(cours.length ? 'soirée libre après les cours' : 'journée libre');
+    options.push({ date: d, day: i, slot, score, why });
+  }
+  const ranked = [...options].sort((a, b) => a.score - b.score || a.day - b.day);
+  const pick = g.pick?.[ws];
+  const manual = pick != null ? options.find((o) => o.day === pick && o.slot) : null;
+  const chosen = manual || (ranked[0]?.slot ? ranked[0] : null);
+  return { ws, chosen, ranked, manual: !!manual };
 }
 
 /** Heure de fin du dernier cours de l'EDT ce jour-là (null s'il n'y a pas cours). */

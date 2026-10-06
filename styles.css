@@ -153,6 +153,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .tl-arabe { --k: var(--k-arabe); }
 .tl-rev { --k: var(--k-rev); }
 .tl-exam { --k: var(--exam); }
+.tl-sport { --k: #0f766e; }
+.action.current { background: var(--surface-2); }
+.action.disabled { color: var(--muted); cursor: default; }
 
 .ctype {
   flex: none; font-size: .68rem; font-weight: 700; letter-spacing: .04em;

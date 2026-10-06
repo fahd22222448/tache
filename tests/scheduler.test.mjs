@@ -326,3 +326,32 @@ test('soir de cours d’arabe : plafond réduit et tâches en trop reportées', 
   assert.equal(moved.length, 2);
   assert.ok(moved.every((p) => p.date > '2026-10-06'));
 });
+
+test('salle de sport : week-end fixe + meilleur jour en semaine', async () => {
+  const { gymPlan } = await import('../js/scheduler.js');
+  const s = defaultStateForTests();
+  s.settings.gym.enabled = true;
+  s.settings.useEdt = true;
+  s.edt = { events: [
+    { date: '2026-10-05', start: '08:00', end: '17:00', title: 'L' },
+    { date: '2026-10-06', start: '13:00', end: '16:30', title: 'M' },
+    { date: '2026-10-07', start: '09:00', end: '17:00', title: 'Me' },
+    { date: '2026-10-08', start: '08:15', end: '17:30', title: 'J' },
+    { date: '2026-10-09', start: '11:00', end: '17:30', title: 'V' },
+  ] };
+  // Samedi : séance fixe à 10h
+  assert.ok(dayInfo(s, '2026-10-10').blocks.some((b) => b.kind === 'sport' && b.start === '10:00' && b.end === '11:30'));
+  // Mercredi = soir d'arabe (finit avant 18h) → la séance va ailleurs, de préférence mardi ou jeudi
+  const plan = gymPlan(s, '2026-10-05');
+  assert.equal(plan.chosen.date, '2026-10-06');
+  assert.ok(plan.ranked.find((o) => o.day === 2).why.includes('pas de créneau libre'));
+  // Mardi : séance après le retour (16:30 + 1h40 → 18:10, +15 min, arrondi 18:30)
+  const mardi = dayInfo(s, '2026-10-06').blocks.find((b) => b.kind === 'sport');
+  assert.deepEqual([mardi.start, mardi.end], ['18:30', '20:00']);
+  // Une seule séance en plus dans la semaine
+  const days = ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'];
+  assert.equal(days.filter((d) => dayInfo(s, d).blocks.some((b) => b.kind === 'sport')).length, 1);
+  // Choix manuel respecté
+  s.settings.gym.pick = { '2026-10-05': 3 };
+  assert.equal(gymPlan(s, '2026-10-05').chosen.date, '2026-10-08');
+});

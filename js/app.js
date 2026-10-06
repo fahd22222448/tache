@@ -2,7 +2,7 @@ import {
   DAY_NAMES, DAY_SHORT, addDays, fmtDate, fmtDuration, iso, toMin, todayISO, weekDates, weekStart, weekday,
 } from './dates.js';
 import {
-  arabicPlan, dayInfo, freeAfter, generateWeek, hardDay, loadOn, nextFreeDay, rebalance, rollover, suggestReplacements, uid,
+  arabicPlan, dayInfo, freeAfter, generateWeek, gymPlan, hardDay, loadOn, nextFreeDay, rebalance, rollover, suggestReplacements, uid,
 } from './scheduler.js';
 import { CATEGORIES, FREQS, IMPORTANCE, defaultState, exportJSON, importJSON, load, save } from './store.js';
 import { computeStats } from './stats.js';
@@ -251,6 +251,23 @@ const actions = {
   'prog-prev': () => { shiftProg(-1); },
   'prog-next': () => { shiftProg(1); },
   'prog-today': () => { ui.progDate = null; render(); },
+  'gym-menu': (el) => openSheet({ type: 'gym', date: el.dataset.date }),
+  'gym-pick': (el) => {
+    const g = state.settings.gym;
+    commit(() => { g.pick = { ...(g.pick || {}), [el.dataset.ws]: Number(el.dataset.day) }; });
+    closeSheet();
+    keepUnderCap();
+    render();
+    toast('Séance de sport déplacée');
+  },
+  'gym-auto': (el) => {
+    const g = state.settings.gym;
+    commit(() => { const p = { ...(g.pick || {}) }; delete p[el.dataset.ws]; g.pick = p; });
+    closeSheet();
+    keepUnderCap();
+    render();
+    toast('Jour choisi automatiquement');
+  },
   'move-menu': (el) => openSheet({ type: 'move', id: el.dataset.id }),
   'move-to': (el) => {
     const p = byId(el.dataset.id);
@@ -411,6 +428,10 @@ document.addEventListener('submit', (e) => {
         name: f.name.trim(), wake: f.wake, sleep: f.sleep, reminderTime: f.reminderTime,
         commuteMin: Number(f.commuteMin), commuteMax: Math.max(Number(f.commuteMax), Number(f.commuteMin)),
         commuteMorning: f.commuteMorning === 'on',
+        gym: {
+          ...s.gym, enabled: f.gymOn === 'on', duration: Number(f.gymDuration), travel: Number(f.gymTravel),
+          weekend: f.gymWeekend === 'on', weekendStart: f.gymWeekendStart, weekday: f.gymWeekday === 'on', freeDayFrom: f.gymFreeFrom,
+        },
         arabic: {
           ...s.arabic, enabled: f.arabicOn === 'on', start: f.arabicStart, end: f.arabicEnd,
           days: [Number(f.arabicDay1), Number(f.arabicDay2)], tieDay: Number(f.arabicTie),
@@ -519,6 +540,14 @@ function blockRow(b) {
     const type = b.type || 'Cours';
     return tlItem('cours', b.start, b.end, `<div class="tl-title"><span class="ctype ctype-${esc(type.replace(/[^A-Za-zÉé]/g, ''))}">${esc(type)}</span>${esc(b.title)}</div>
       <div class="tl-sub">${icon('pin', 13)}${b.room ? `<b>${esc(b.room)}</b>` : '<i>salle non indiquée</i>'}${b.teachers?.length ? `<span class="dot-sep"></span>${esc(b.teachers.join(', '))}` : ''}</div>`);
+  }
+  if (b.kind === 'sport') {
+    const sub = b.extra
+      ? `Séance en plus · ${esc(b.plan.manual ? 'jour choisi par toi' : b.plan.chosen.why.join(', '))}`
+      : 'Séance du week-end';
+    return tlItem('sport', b.start, b.end, `<div class="tl-row"><div class="tl-title">${icon('dumbbell', 16)}Salle de sport</div>
+      ${b.extra ? `<button class="toggle" data-act="gym-menu" data-date="${b.plan.ws}">${icon('calendar', 14)}Changer</button>` : ''}</div>
+      <div class="tl-sub">${sub}${b.travel ? `<span class="dot-sep"></span>trajet ${b.travel} min compris` : ''}</div>`);
   }
   const ic = b.arabic ? 'book' : 'event';
   return tlItem(b.arabic ? 'arabe' : 'event', b.start, b.end, `<div class="tl-title">${icon(ic, 16)}${esc(b.title)}</div>${b.room ? `<div class="tl-sub">${esc(b.room)}</div>` : ''}`);
@@ -685,6 +714,28 @@ function arabicCard(today) {
   </section>`;
 }
 
+function gymCard(today) {
+  const g = state.settings.gym;
+  if (!g?.enabled) return '';
+  const ws = weekStart(today);
+  const row = (label, w) => {
+    const p = gymPlan(state, w);
+    const c = p?.chosen;
+    const what = c ? `${fmtDate(c.date)} · ${c.slot.start}–${c.slot.end}` : 'Pas de créneau cette semaine';
+    return `<li class="row-item" data-act="gym-menu" data-date="${w}"><div class="grow"><span class="eyebrow">${label}</span><div class="ri-title">${what}</div>
+      <div class="ri-sub">${c ? esc(p.manual ? 'choisi par toi' : c.why.join(', ')) : 'aucun jour n’a 1 h 30 de libre'}</div></div>${icon('right', 18, 'muted')}</li>`;
+  };
+  const we = g.weekend !== false ? `Samedi et dimanche · ${g.weekendStart}, ${fmtDuration(g.duration)}` : 'Pas de séance le week-end';
+  return `<section class="card">
+    ${sectionHead(`${icon('dumbbell', 18)}Salle de sport`)}
+    <ul class="list">
+      <li class="row-item static"><div class="grow"><span class="eyebrow">Week-end</span><div class="ri-title">${we}</div></div></li>
+      ${g.weekday !== false ? `${row('Séance en plus cette semaine', ws)}${row('Semaine prochaine', addDays(ws, 7))}` : ''}
+    </ul>
+    <p class="hint">Le meilleur jour est recalculé chaque semaine selon tes cours, ton retour à la maison, le cours d’arabe et tes contrôles.</p>
+  </section>`;
+}
+
 function viewAgenda() {
   const today = todayISO();
   const edt = state.edt;
@@ -720,6 +771,7 @@ function viewAgenda() {
     ${upcoming.length ? `<ul class="list">${upcoming.map(exRow).join('')}</ul>` : '<p class="empty">Aucun contrôle à venir.</p>'}
     ${past.length ? `<details class="more"><summary>${icon('down', 14)}Passés (${past.length})</summary><ul class="list">${past.reverse().map(exRow).join('')}</ul></details>` : ''}
   </section>
+  ${gymCard(today)}
   ${arabicCard(today)}
   <section class="card">
     ${sectionHead(`${icon('calendar', 18)}Mes activités`, `<button class="btn small" data-act="add-event">${icon('plus', 15)}Ajouter</button>`)}
@@ -826,6 +878,18 @@ function viewSettings() {
       <p class="hint">Quand IDF Mobilités a calculé le trajet, c’est lui qui compte. « Avec maman » le remplace par la durée courte.</p>
     </section>
     <section class="card">
+      ${sectionHead(`${icon('dumbbell', 18)}Salle de sport`)}
+      <label class="switch"><input type="checkbox" name="gymOn" ${s.gym?.enabled !== false ? 'checked' : ''}><span></span>Je vais à la salle</label>
+      <div class="grid2">
+        <label>Durée d’une séance (min) <input type="number" name="gymDuration" min="15" max="240" value="${s.gym?.duration ?? 90}"></label>
+        <label>Trajet aller (min) <input type="number" name="gymTravel" min="0" max="120" value="${s.gym?.travel ?? 0}"></label>
+      </div>
+      <label class="switch"><input type="checkbox" name="gymWeekend" ${s.gym?.weekend !== false ? 'checked' : ''}><span></span>Samedi et dimanche</label>
+      <label>Heure le week-end <input type="time" name="gymWeekendStart" value="${s.gym?.weekendStart || '10:00'}"></label>
+      <label class="switch"><input type="checkbox" name="gymWeekday" ${s.gym?.weekday !== false ? 'checked' : ''}><span></span>Une séance en plus en semaine (meilleur jour calculé)</label>
+      <label>Les jours sans cours, pas avant <input type="time" name="gymFreeFrom" value="${s.gym?.freeDayFrom || '10:00'}"></label>
+    </section>
+    <section class="card">
       ${sectionHead(`${icon('book', 18)}Cours d’arabe`)}
       <label class="switch"><input type="checkbox" name="arabicOn" ${s.arabic?.enabled ? 'checked' : ''}><span></span>Cours d’arabe chaque semaine</label>
       <div class="grid2">
@@ -910,6 +974,21 @@ function sheetReplace(s) {
   return `<div class="sheet-head"><span class="sheet-ic">${icon('users', 20)}</span><div><h2>« ${esc(s.name)} » est déjà faite</h2>
     <p class="muted small">${items.length ? `Il te reste ${fmtDuration(room)} sous ton plafond ${when}. Faire autre chose à la place ?` : `Rien d’autre ne rentre ${when} sous ton plafond.`}</p></div></div>
     <div class="actions-list">${items.map(btn).join('')}${action('replace-none', 'close', 'Non merci, je garde ce temps libre')}</div>`;
+}
+
+function sheetGym(s) {
+  const plan = gymPlan(state, s.date);
+  if (!plan) return '<p class="empty">Séance en semaine désactivée.</p>';
+  const items = plan.ranked.map((o, i) => {
+    const label = `${DAY_NAMES[o.day]} ${Number(o.date.slice(8, 10))}${o.slot ? ` · ${o.slot.start}–${o.slot.end}` : ''}<small>${i === 0 && o.slot ? 'conseillé · ' : ''}${esc(o.why.join(', '))}</small>`;
+    const on = plan.chosen?.date === o.date;
+    return o.slot
+      ? action('gym-pick', on ? 'done' : 'dumbbell', label, `data-ws="${plan.ws}" data-day="${o.day}"`, on ? 'current' : '')
+      : `<div class="action disabled">${icon('close', 18)}<span>${label}</span></div>`;
+  }).join('');
+  return `<div class="sheet-head"><span class="sheet-ic">${icon('dumbbell', 20)}</span><div><h2>Séance de sport en plus</h2>
+    <p class="muted small">Semaine du ${fmtDate(plan.ws, false)} · classement du meilleur au moins bon jour.</p></div></div>
+    <div class="actions-list">${items}${plan.manual ? action('gym-auto', 'sparkles', 'Revenir au choix automatique', `data-ws="${plan.ws}"`) : ''}</div>`;
 }
 
 function sheetMove(p) {
@@ -1012,6 +1091,7 @@ function renderSheet() {
   else if (s.type === 'move') html = sheetMove(byId(s.id));
   else if (s.type === 'swap') html = sheetSwap(byId(s.id));
   else if (s.type === 'replace') html = sheetReplace(s);
+  else if (s.type === 'gym') html = sheetGym(s);
   else if (s.type === 'event') html = sheetEvent(state.events.find((e) => e.id === s.id));
   else if (s.type === 'exam') html = sheetExam(state.exams.find((e) => e.id === s.id));
   else if (s.type === 'tpl') html = sheetTpl(state.templates.find((t) => t.id === s.id));
@@ -1043,7 +1123,7 @@ keepUnderCap();
 render();
 refreshEdt();
 setInterval(tick, 60 * 1000);
-setInterval(() => refreshEdt(), 30 * 60 * 1000);
+setInterval(() => refreshEdt(), 5 * 60 * 1000);
 setTimeout(tick, 3000);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {

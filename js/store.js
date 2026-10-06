@@ -121,6 +121,12 @@ export function defaultState() {
       edtUrl: 'edt.json',
       hiddenEdt: [],
       bonusEnabled: true,
+      // Salle de sport : samedi et dimanche, plus une séance en semaine au meilleur jour (calculé).
+      gym: {
+        enabled: true, duration: 90, travel: 0,
+        weekend: true, weekendDays: [5, 6], weekendStart: '10:00',
+        weekday: true, freeDayFrom: '10:00', pick: {},
+      },
       // Cours d'arabe 20h–23h : mardi ou mercredi selon l'heure de fin des cours (voir arabicPlan)
       arabic: {
         enabled: true, title: 'Cours d’arabe', start: '20:00', end: '23:00',

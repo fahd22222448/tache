@@ -35,6 +35,8 @@ Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de 
 
 **Week-end** : plafond plus haut (90 min par défaut, réglable). Les grosses tâches (20 min ou plus, ou pénibles) y sont placées en priorité.
 
+**Salle de sport** : séances fixes le samedi et le dimanche (10h, 1 h 30 par défaut). Chaque semaine, l'app calcule aussi le meilleur jour du lundi au vendredi pour une séance en plus. Il faut un créneau de 1 h 30 après le retour à la maison. L'app préfère le milieu de semaine pour la récupération et évite le soir du cours d'arabe, le jour et la veille d'un contrôle, ainsi que les séances tardives. Le jour peut être changé à la main (« Changer »).
+
 **Tâche bonus** : une petite action en plus est proposée chaque semaine, s'il reste de la place sous le plafond.
 
 ## Mise en ligne (une seule fois)
@@ -46,7 +48,7 @@ Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de 
 
 ### Synchronisation de l'emploi du temps
 
-Le workflow `.github/workflows/pages.yml` tourne à **6h00, 12h00 et 18h30** (heure d'hiver de Paris, une heure de plus en été). Il tourne aussi à chaque push et à la demande. Pour changer les heures, modifie les lignes `cron` (elles sont en UTC).
+Le workflow `.github/workflows/pages.yml` vérifie l'emploi du temps et les trajets **toutes les 20 minutes, de 5h à 23h** (heure de Paris), ainsi qu'à chaque push. Les cours inchangés réutilisent leur fiche déjà lue, pour ne pas surcharger le serveur de l'IUT. L'app recharge les données toutes les 5 minutes quand elle est ouverte. Chaque lundi, le workflow se réactive lui-même pour que GitHub ne le mette pas en pause après 60 jours sans activité.
 
 - L'app recharge `edt.json` à chaque ouverture et toutes les 30 min. Si un cours a bougé, un bandeau 📢 s'affiche avec un bouton *Replanifier ma semaine*.
 - **Notification push quand l'EDT change**, même si l'app est fermée : installe l'app [ntfy](https://ntfy.sh) et abonne-toi à un nom de sujet secret (par exemple `edt-rt3-xxxx`). Ajoute ensuite ce nom dans **Settings → Secrets and variables → Actions** sous le secret `NTFY_TOPIC`.
