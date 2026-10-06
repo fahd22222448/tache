@@ -1,6 +1,9 @@
 // Moteur de planification : fonctions pures, sans DOM, testables avec node --test.
 import { addDays, diffDays, fromMin, month, toMin, weekDates, weekday } from './dates.js';
 
+// « other » = faite par quelqu'un d'autre : compte comme faite pour la fréquence, pas pour tes stats.
+const DONE_LIKE = ['todo', 'done', 'other'];
+
 export const FREQ_DAYS = { daily: 1, weekly: 7, biweekly: 14, monthly: 30 };
 // Délai minimal depuis la dernière fois avant de reproposer la tâche.
 const FREQ_TOLERANCE = { daily: 1, weekly: 4, biweekly: 10, monthly: 24 };
@@ -19,8 +22,7 @@ export function uid(prefix = 'id') {
 /* ---------- Ce qui occupe une journée ---------- */
 
 /**
- * Créneaux occupés d'une date : événements perso, cours de l'EDT, temps de jeu protégé,
- * et trajets. Entre le départ et le retour, tu n'es pas à la maison : ce temps est compté
+ * Créneaux occupés d'une date : événements perso, cours de l'EDT et trajets. Entre le départ et le retour, tu n'es pas à la maison : ce temps est compté
  * comme occupé (bloc « absent », non affiché).
  */
 export function blocksOn(state, date) {
@@ -40,9 +42,6 @@ export function blocksOn(state, date) {
     }
   }
   blocks.push(...commuteBlocks(state.settings, blocks.filter((b) => b.away)));
-  for (const p of state.settings.playBlocks || []) {
-    if (p.day === -1 || p.day === wd) blocks.push({ kind: 'jeu', title: 'Temps de jeu protégé', start: p.start, end: p.end });
-  }
   return blocks.sort((a, b) => toMin(a.start) - toMin(b.start));
 }
 
@@ -143,7 +142,7 @@ function lastOccurrence(planned, tplId, before) {
   let last = null;
   for (const p of planned) {
     if (p.templateId !== tplId || !p.date || p.date >= before) continue;
-    if (p.status !== 'done' && p.status !== 'todo') continue;
+    if (!DONE_LIKE.includes(p.status)) continue;
     if (!last || p.date > last) last = p.date;
   }
   return last;
@@ -191,7 +190,7 @@ function makeCtx(state, planned, dates) {
     ctx.load[d] = loadOn(planned, d);
   }
   for (const p of planned) {
-    if (p.date && (p.status === 'todo' || p.status === 'done')) ctx.byTpl[`${p.templateId}|${p.date}`] = true;
+    if (p.date && DONE_LIKE.includes(p.status)) ctx.byTpl[`${p.templateId}|${p.date}`] = true;
   }
   return ctx;
 }
@@ -234,7 +233,7 @@ export function generateWeek(state, ws, today) {
     else if (p.date == null) carried.push({ ...p, carried: true });
   }
 
-  const inWeek = (p) => p.date && p.date >= ws && p.date <= weekEnd && (p.status === 'todo' || p.status === 'done');
+  const inWeek = (p) => p.date && p.date >= ws && p.date <= weekEnd && DONE_LIKE.includes(p.status);
   const keptByTpl = {};
   for (const p of kept.filter(inWeek)) (keptByTpl[p.templateId] ||= []).push(p.date);
   for (const c of carried) (keptByTpl[c.templateId] ||= []).push('carried');
@@ -398,6 +397,47 @@ export function hardDay(state, date) {
     rest.push(p);
   }
   return { planned: rest, hardDays, moved: toMove };
+}
+
+/**
+ * Une tâche a été faite par quelqu'un d'autre : propose quoi faire à la place ce jour-là,
+ * sans dépasser le plafond. D'abord avancer une tâche des jours suivants, puis une tâche
+ * du catalogue qui n'est pas prévue prochainement, puis une idée bonus.
+ */
+export function suggestReplacements(state, date, limit = 5) {
+  const room = dayInfo(state, date).cap - loadOn(state.planned, date);
+  if (room <= 0) return { room: 0, items: [] };
+  const tplOf = (id) => state.templates.find((t) => t.id === id);
+  const onDate = new Set(state.planned.filter((p) => p.date === date && DONE_LIKE.includes(p.status)).map((p) => p.templateId));
+  const horizon = addDays(date, 7);
+
+  const advance = state.planned
+    .filter((p) => p.status === 'todo' && p.date > date && p.date <= horizon && !p.locked && !p.bonus
+      && p.templateId && tplOf(p.templateId)?.freq !== 'daily' && !onDate.has(p.templateId) && p.duration <= room)
+    .sort((a, b) => (b.priority || 0) - (a.priority || 0) || a.date.localeCompare(b.date) || b.duration - a.duration)
+    .slice(0, 3)
+    .map((p) => ({ kind: 'advance', id: p.id, name: p.name, duration: p.duration, category: p.category, from: p.date }));
+
+  const soon = new Set(state.planned
+    .filter((p) => p.date && p.date >= addDays(date, -6) && p.date <= addDays(date, 13) && DONE_LIKE.includes(p.status))
+    .map((p) => p.templateId));
+  const templates = state.templates
+    .filter((t) => t.active !== false && t.fixedDay == null && !soon.has(t.id) && Number(t.duration) <= room)
+    .filter((t) => {
+      const f = effectiveFreq(t, date);
+      return f && f !== 'daily';
+    })
+    .sort((a, b) => (a.pref === 'hate') - (b.pref === 'hate') || b.duration - a.duration)
+    .slice(0, 2)
+    .map((t) => ({ kind: 'template', tplId: t.id, name: t.name, duration: Number(t.duration), category: t.category }));
+
+  const recentBonus = new Set(state.planned.filter((p) => p.bonus && p.date >= addDays(date, -14)).map((p) => p.name));
+  const bonus = (state.bonusIdeas || [])
+    .filter((b) => Number(b.duration) <= room && !recentBonus.has(b.name))
+    .slice(0, 1)
+    .map((b) => ({ kind: 'bonus', name: b.name, duration: Number(b.duration), category: 'bonus' }));
+
+  return { room, items: [...advance, ...templates, ...bonus].slice(0, limit) };
 }
 
 /** Prochain jour (à partir de `from`) où la tâche rentre sous le plafond. */

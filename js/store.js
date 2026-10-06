@@ -48,10 +48,6 @@ export function defaultState() {
       edtUrl: 'edt.json',
       hiddenEdt: [],
       bonusEnabled: true,
-      playBlocks: [
-        { day: -1, start: '21:00', end: '22:30' },
-        { day: 5, start: '14:00', end: '18:00' },
-      ],
     },
     events: [],
     exams: [],

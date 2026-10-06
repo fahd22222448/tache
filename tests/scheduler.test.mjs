@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultStateForTests } from './helpers.mjs';
 import { addDays, weekDates } from '../js/dates.js';
-import { dayInfo, generateWeek, hardDay, loadOn, rollover } from '../js/scheduler.js';
+import { dayInfo, generateWeek, hardDay, loadOn, rollover, suggestReplacements } from '../js/scheduler.js';
 import { computeStats } from '../js/stats.js';
 import { diffEvents, normalizeEvent } from '../scripts/fetch-edt.mjs';
 
@@ -45,16 +45,15 @@ test('la veille et le jour d’un contrôle ont un plafond réduit', () => {
   assert.equal(dayInfo(s, '2026-10-07').revisions[0].subject, 'Maths');
 });
 
-test('les cours et le temps de jeu réduisent le temps libre', () => {
+test('les cours réduisent le temps libre', () => {
   const s = defaultStateForTests();
-  s.settings.playBlocks = [{ day: -1, start: '21:00', end: '22:00' }];
   s.settings.useEdt = true;
   s.settings.commuteMax = 0;
   s.edt = { events: [{ date: '2026-10-05', start: '08:00', end: '18:00', title: 'Cours' }] };
   const lundi = dayInfo(s, '2026-10-05');
   const mardi = dayInfo(s, '2026-10-06');
   assert.equal(mardi.free - lundi.free, 600);
-  assert.equal(mardi.free, 16 * 60 - 60);
+  assert.equal(mardi.free, 16 * 60);
 });
 
 test('le trajet compte : pas de tâche avant d’être rentré, temps entre les cours inclus', () => {
@@ -152,6 +151,23 @@ test('une tâche bonus est proposée chaque semaine s’il reste de la place', (
   s.settings.maxLoad = 90;
   week(s);
   assert.equal(s.planned.filter((p) => p.bonus).length, 1);
+});
+
+test('tâche faite par quelqu’un d’autre : remplaçants proposés, pas de doublon en régénérant', () => {
+  const s = defaultStateForTests();
+  week(s);
+  const asp = s.planned.find((p) => p.name === 'Passer l’aspirateur');
+  const day = asp.date;
+  asp.status = 'other';
+  const { room, items } = suggestReplacements(s, day);
+  assert.ok(room >= asp.duration);
+  assert.ok(items.length > 0);
+  assert.ok(items.every((it) => it.duration <= room && it.name !== asp.name));
+  assert.ok(items.filter((it) => it.kind === 'advance').every((it) => it.from > day));
+  week(s); // l'aspirateur ne doit pas être reprogrammé cette semaine
+  assert.equal(s.planned.filter((p) => p.name === 'Passer l’aspirateur').length, 1);
+  // ne compte pas dans les stats
+  assert.equal(computeStats([{ date: '2026-10-05', status: 'other', duration: 10 }], '2026-10-06').percent, null);
 });
 
 test('statistiques : série et pourcentage', () => {

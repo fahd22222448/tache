@@ -1,7 +1,7 @@
 import {
   DAY_NAMES, DAY_SHORT, addDays, fmtDate, fmtDuration, iso, toMin, todayISO, weekDates, weekStart, weekday,
 } from './dates.js';
-import { dayInfo, generateWeek, hardDay, loadOn, nextFreeDay, rollover, uid } from './scheduler.js';
+import { dayInfo, generateWeek, hardDay, loadOn, nextFreeDay, rollover, suggestReplacements, uid } from './scheduler.js';
 import { CATEGORIES, FREQS, IMPORTANCE, defaultState, exportJSON, importJSON, load, save } from './store.js';
 import { computeStats } from './stats.js';
 import { buildICS } from './ics.js';
@@ -151,6 +151,38 @@ const actions = {
     closeSheet();
     toast(d ? `Reporté à ${fmtDate(d)}` : 'Aucun créneau libre : la tâche est dans « À placer »');
   },
+  'done-by-other': (el) => {
+    const p = byId(el.dataset.id);
+    const date = p.date || todayISO();
+    commit(() => {
+      p.status = 'other';
+      p.doneAt = new Date().toISOString();
+      if (!p.date) p.date = date;
+    });
+    openSheet({ type: 'replace', date, name: p.name });
+  },
+  'replace-advance': (el) => {
+    const p = byId(el.dataset.id);
+    commit(() => { p.date = el.dataset.date; p.pinned = true; p.carried = false; });
+    closeSheet();
+    toast(`« ${p.name} » avancée à ${el.dataset.date === todayISO() ? 'aujourd’hui' : fmtDate(el.dataset.date)}`);
+  },
+  'replace-tpl': (el) => {
+    const t = state.templates.find((x) => x.id === el.dataset.tpl);
+    commit(() => {
+      state.planned.push({ id: uid('p'), templateId: t.id, name: t.name, duration: Number(t.duration), category: t.category, status: 'todo', priority: 0, date: el.dataset.date, pinned: true });
+    });
+    closeSheet();
+    toast(`« ${t.name} » ajoutée`);
+  },
+  'replace-bonus': (el) => {
+    commit(() => {
+      state.planned.push({ id: uid('p'), templateId: null, name: el.dataset.name, duration: Number(el.dataset.duration), category: 'bonus', status: 'todo', priority: 0, bonus: true, date: el.dataset.date, pinned: true });
+    });
+    closeSheet();
+    toast('Bonus ajouté ⭐');
+  },
+  'replace-none': () => { closeSheet(); toast('OK, ce temps est libre 🙂'); },
   'move-menu': (el) => openSheet({ type: 'move', id: el.dataset.id }),
   'move-to': (el) => {
     const p = byId(el.dataset.id);
@@ -203,8 +235,6 @@ const actions = {
     closeSheet();
   },
   'set-pref': (el) => commit(() => { state.templates.find((t) => t.id === el.dataset.id).pref = el.dataset.pref; }),
-  'add-play': () => commit(() => { state.settings.playBlocks.push({ day: -1, start: '20:00', end: '21:00' }); }),
-  'del-play': (el) => commit(() => { state.settings.playBlocks.splice(Number(el.dataset.i), 1); }),
   'notif-on': async () => {
     if (!('Notification' in window)) return toast('Notifications non supportées sur ce navigateur');
     const p = await Notification.requestPermission();
@@ -246,10 +276,6 @@ document.addEventListener('change', (e) => {
       const left = state.planned.filter((x) => x.date === p.date && x.status === 'todo' && !x.bonus);
       toast(left.length ? `Bien joué ! Encore ${left.length}` : 'Tout est fait pour aujourd’hui 🎉');
     }
-  } else if (el.dataset.play != null) {
-    const b = state.settings.playBlocks[Number(el.dataset.play)];
-    b[el.name] = el.name === 'day' ? Number(el.value) : el.value;
-    commit();
   } else if (el.id === 'import-file' && el.files[0]) {
     el.files[0].text().then((t) => {
       try {
@@ -330,8 +356,9 @@ function taskRow(p, { showDate = false } = {}) {
   if (p.pinned && !p.locked) tags.push('<span class="tag">✋ déplacée</span>');
   const tplPref = state.templates.find((t) => t.id === p.templateId)?.pref;
   if (tplPref === 'hate') tags.push('<span class="tag">😖</span>');
-  return `<li class="task ${p.status === 'done' ? 'done' : ''}">
-    <label class="check"><input type="checkbox" data-act="toggle" data-id="${p.id}" ${p.status === 'done' ? 'checked' : ''} aria-label="Fait"><span></span></label>
+  if (p.status === 'other') tags.unshift('<span class="tag ok">👥 faite par quelqu’un d’autre</span>');
+  return `<li class="task ${p.status !== 'todo' ? 'done' : ''}">
+    <label class="check"><input type="checkbox" data-act="toggle" data-id="${p.id}" ${p.status !== 'todo' ? 'checked' : ''} aria-label="Fait"><span></span></label>
     <div class="t-main">
       <div class="t-name">${c.icon} ${esc(p.name)}</div>
       <div class="t-meta">${fmtDuration(p.duration)}${showDate && p.date ? ` · ${fmtDate(p.date)}` : ''} ${tags.join(' ')}</div>
@@ -359,7 +386,7 @@ function edtBanner(today) {
   </section>`;
 }
 
-const BLOCK_ICON = { cours: '🎓', jeu: '🎮', trajet: '🚆', event: '📌' };
+const BLOCK_ICON = { cours: '🎓', trajet: '🚆', event: '📌' };
 
 function blockRow(b) {
   if (b.kind === 'trajet') {
@@ -383,7 +410,7 @@ function blocksList(info) {
 function viewToday() {
   const today = todayISO();
   const info = dayInfo(state, today);
-  const tasks = state.planned.filter((p) => p.date === today && ['todo', 'done'].includes(p.status));
+  const tasks = state.planned.filter((p) => p.date === today && ['todo', 'done', 'other'].includes(p.status));
   const load = loadOn(state.planned, today);
   const remaining = tasks.filter((p) => p.status === 'todo').reduce((a, p) => a + Number(p.duration), 0);
   const unplaced = state.planned.filter((p) => p.status === 'todo' && !p.date);
@@ -410,7 +437,7 @@ function viewToday() {
   </section>
   <section class="card">
     <h2>Mes tâches du jour</h2>
-    ${tasks.length ? `<ul class="tasks">${tasks.map((p) => taskRow(p)).join('')}</ul>` : '<p class="muted">Aucune tâche aujourd’hui. Profite ! 🎮</p>'}
+    ${tasks.length ? `<ul class="tasks">${tasks.map((p) => taskRow(p)).join('')}</ul>` : '<p class="muted">Aucune tâche aujourd’hui. Profite ! 🙂</p>'}
     ${tomorrowFixed.length ? `<p class="hint">🔔 Demain : ${tomorrowFixed.map((p) => esc(p.name)).join(', ')} — pense à préparer ce soir.</p>` : ''}
     <div class="row">
       ${isHard
@@ -434,7 +461,7 @@ function viewWeek() {
   const canGenerate = dates[6] >= today;
   const days = dates.map((d) => {
     const info = dayInfo(state, d);
-    const tasks = state.planned.filter((p) => p.date === d && ['todo', 'done'].includes(p.status));
+    const tasks = state.planned.filter((p) => p.date === d && ['todo', 'done', 'other'].includes(p.status));
     const load = loadOn(state.planned, d);
     const cours = info.blocks.filter((b) => b.kind === 'cours' || b.kind === 'event').length;
     const home = info.blocks.find((b) => b.title === 'Trajet retour');
@@ -544,7 +571,6 @@ function viewStats() {
 
 function viewSettings() {
   const s = state.settings;
-  const dayOpts = (sel) => [`<option value="-1" ${sel === -1 ? 'selected' : ''}>Tous les jours</option>`, ...DAY_NAMES.map((n, i) => `<option value="${i}" ${sel === i ? 'selected' : ''}>${n}</option>`)].join('');
   const notifSupported = 'Notification' in window;
   return `
   <header class="top"><h1>Réglages</h1></header>
@@ -579,16 +605,6 @@ function viewSettings() {
       <textarea name="bonusIdeas" rows="5">${esc(state.bonusIdeas.map((b) => `${b.name} | ${b.duration}`).join('\n'))}</textarea></label>
     <button class="btn primary">Enregistrer</button>
   </form>
-  <section class="card">
-    <div class="day-head"><h2>🎮 Temps de jeu protégé</h2><button class="btn small" data-act="add-play">+ Ajouter</button></div>
-    <p class="hint">Aucune tâche ne sera placée sur ce temps-là.</p>
-    ${s.playBlocks.map((b, i) => `<div class="play-row">
-      <select name="day" data-play="${i}">${dayOpts(b.day)}</select>
-      <input type="time" name="start" value="${b.start}" data-play="${i}">
-      <input type="time" name="end" value="${b.end}" data-play="${i}">
-      <button class="icon-btn" data-act="del-play" data-i="${i}" aria-label="Supprimer">✕</button>
-    </div>`).join('')}
-  </section>
   <section class="card">
     <h2>🔔 Rappels</h2>
     ${!notifSupported ? '<p class="muted">Ce navigateur ne gère pas les notifications. Utilise l’export agenda.</p>'
@@ -627,11 +643,31 @@ function sheetTask(p) {
     <p class="muted">${fmtDuration(p.duration)}${p.date ? ` · ${fmtDate(p.date)}` : ' · à placer'}${tpl ? ` · ${FREQS[tpl.freq]}` : ''}</p>
     ${p.locked ? '<p class="hint">🔒 Tâche fixe : elle a un jour attitré.</p>' : ''}
     <div class="stack">
-      <button class="btn primary" data-act="postpone" data-id="${p.id}">⏭ Reporter au prochain jour libre</button>
+      ${p.status === 'todo' ? `<button class="btn primary" data-act="done-by-other" data-id="${p.id}">👥 Déjà faite par quelqu’un d’autre</button>` : ''}
+      <button class="btn" data-act="postpone" data-id="${p.id}">⏭ Reporter au prochain jour libre</button>
       <button class="btn" data-act="move-menu" data-id="${p.id}">📅 Déplacer à un autre jour…</button>
       <button class="btn" data-act="swap-menu" data-id="${p.id}">🔁 Échanger avec une autre tâche…</button>
       <button class="btn danger" data-act="delete-task" data-id="${p.id}">🗑 Supprimer</button>
     </div>`;
+}
+
+function sheetReplace(s) {
+  const { room, items } = suggestReplacements(state, s.date);
+  const when = s.date === todayISO() ? 'aujourd’hui' : fmtDate(s.date).toLowerCase();
+  const btn = (it) => {
+    const label = `${cat(it.category).icon} ${esc(it.name)} <small class="muted">· ${fmtDuration(it.duration)}</small>`;
+    if (it.kind === 'advance') {
+      return `<button class="btn left" data-act="replace-advance" data-id="${it.id}" data-date="${s.date}">⏩ Avancer ${label}<br><small class="muted">prévue ${fmtDate(it.from).toLowerCase()}</small></button>`;
+    }
+    if (it.kind === 'template') return `<button class="btn left" data-act="replace-tpl" data-tpl="${it.tplId}" data-date="${s.date}">➕ ${label}</button>`;
+    return `<button class="btn left" data-act="replace-bonus" data-name="${esc(it.name)}" data-duration="${it.duration}" data-date="${s.date}">⭐ Bonus : ${label}</button>`;
+  };
+  return `<h2>👥 « ${esc(s.name)} » est déjà faite</h2>
+    ${items.length
+    ? `<p class="muted">Il te reste ${fmtDuration(room)} sous ton plafond ${when}. Tu veux faire autre chose à la place ?</p>
+       <div class="stack">${items.map(btn).join('')}</div>`
+    : `<p class="muted">Rien d’autre ne rentre ${when} sous ton plafond.</p>`}
+    <div class="stack"><button class="btn" data-act="replace-none">Non merci, je garde ce temps libre</button></div>`;
 }
 
 function sheetMove(p) {
@@ -731,6 +767,7 @@ function renderSheet() {
   if (s.type === 'task') html = sheetTask(byId(s.id));
   else if (s.type === 'move') html = sheetMove(byId(s.id));
   else if (s.type === 'swap') html = sheetSwap(byId(s.id));
+  else if (s.type === 'replace') html = sheetReplace(s);
   else if (s.type === 'event') html = sheetEvent(state.events.find((e) => e.id === s.id));
   else if (s.type === 'exam') html = sheetExam(state.exams.find((e) => e.id === s.id));
   else if (s.type === 'tpl') html = sheetTpl(state.templates.find((t) => t.id === s.id));

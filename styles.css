@@ -111,7 +111,6 @@ section.stats3 { margin-bottom: 12px; }
 .blocks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .blk { padding: 8px 10px; border-radius: 10px; background: var(--bg); border-left: 4px solid var(--muted); }
 .blk.cours { border-color: var(--accent); }
-.blk.jeu { border-color: var(--ok); }
 .blk.rev { border-color: var(--warn); }
 .blk.trajet { border-color: #0891b2; border-left-style: dashed; }
 .blk.exam { border-color: var(--exam); }
@@ -138,15 +137,13 @@ details summary { cursor: pointer; color: var(--accent); margin-top: 8px; }
 .form { display: grid; gap: 12px; }
 .form label { display: grid; gap: 4px; font-size: .9rem; font-weight: 600; }
 .form label.inline { display: flex; align-items: center; gap: 8px; font-weight: 500; }
-.form input:not([type=checkbox]), .form select, .form textarea, .play-row select, .play-row input {
+.form input:not([type=checkbox]), .form select, .form textarea {
   width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); min-height: 44px;
 }
 .form fieldset { border: 1px solid var(--line); border-radius: 12px; display: grid; gap: 10px; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .months { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .months label { display: flex; gap: 4px; align-items: center; font-weight: 500; }
-.play-row { display: grid; grid-template-columns: 1fr 1fr 44px; gap: 6px; margin-bottom: 12px; align-items: center; }
-.play-row select { grid-column: 1 / -1; }
 
 .tabs {
   position: fixed; bottom: 0; left: 0; right: 0; display: grid; grid-template-columns: repeat(6, 1fr);

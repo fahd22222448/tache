@@ -1,6 +1,6 @@
 # Tâche — ma semaine
 
-Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de la maison et du jardin. L'app répartit les tâches sur les jours où tu as le plus de temps et d'énergie. Elle garde toujours de la place pour réviser et pour jouer.
+Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de la maison et du jardin. L'app répartit les tâches sur les jours où tu as le plus de temps et d'énergie. Elle garde toujours de la place pour réviser.
 
 - **App web installable (PWA)** : elle marche hors ligne et s'ajoute à l'écran d'accueil. Elle ne demande ni compte ni serveur.
 - **Emploi du temps de l'IUT synchronisé automatiquement** : une GitHub Action interroge le Celcat de l'IUT de Vélizy (groupe `RT3-FA`) à heures fixes. Elle détecte les cours ajoutés, déplacés ou annulés et les publie avec l'app.
@@ -14,12 +14,12 @@ Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de 
 | 🎓 **Planning** | État de la synchro EDT et derniers changements, contrôles et devoirs (date, matière, importance), activités ponctuelles ou répétées chaque semaine |
 | 🧺 **Tâches** | Catalogue (nom, durée, fréquence, catégorie, difficulté, jour fixe, mois de saison) et ressenti 😖 / 😐 / 🙂 |
 | 🔥 **Suivi** | Série de jours réussis, % de tâches faites, historique par semaine, bonus réalisés |
-| ⚙️ **Réglages** | Heures de réveil et de coucher, plafonds, temps de jeu protégé, rappels, export agenda `.ics`, sauvegarde et restauration |
+| ⚙️ **Réglages** | Heures de réveil et de coucher, plafonds, trajet, rappels, export agenda `.ics`, sauvegarde et restauration |
 
 ### Comment la semaine est générée (`js/scheduler.js`)
 
 1. Les **tâches fixes** sont placées en premier : poubelle grise le lundi, jaune le mercredi (🔒).
-2. **Temps libre** d'un jour = heures éveillées − cours (EDT) − activités − **trajets** − révisions automatiques − temps de jeu protégé. Les jours de cours, tout le temps passé hors de la maison compte comme occupé : le trajet aller, les cours, les trous entre deux cours et le trajet retour. Le trajet varie entre 45 min et 1 h 40 (réglable) ; l'app prévoit toujours le plus long.
+2. **Temps libre** d'un jour = heures éveillées − cours (EDT) − activités − **trajets** − révisions automatiques. Les jours de cours, tout le temps passé hors de la maison compte comme occupé : le trajet aller, les cours, les trous entre deux cours et le trajet retour. Le trajet varie entre 45 min et 1 h 40 (réglable) ; l'app prévoit toujours le plus long.
 3. **Plafond de charge** par jour : 45 min par défaut, 20 min le jour et la veille d'un contrôle, réduit 2 à 3 jours avant pour un contrôle important. Le plafond n'est jamais dépassé : ce qui ne rentre pas va dans « À placer ».
 4. **Ordre de placement** : tâches en retard, puis urgence, puis préférence (les tâches détestées vont sur les jours avec le plus d'énergie), puis les plus longues.
 5. **Répartition** : chaque tâche va sur le jour le moins chargé, et l'app évite de placer la même tâche deux jours de suite.
@@ -28,6 +28,8 @@ Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de 
 **Révisions automatiques** : un contrôle normal ajoute 30 min la veille, un important 45 min sur 3 jours, un très important 60 min sur 5 jours.
 
 **Rattrapage** : chaque jour, les tâches non faites passent au prochain créneau libre avec une priorité plus haute. Les tâches quotidiennes manquées, comme la vaisselle, ne sont pas cumulées.
+
+**Déjà faite par quelqu'un d'autre** : dans le menu `⋯` d'une tâche. Elle compte comme faite (elle ne revient pas avant sa prochaine échéance) sans entrer dans tes statistiques. L'app propose ensuite quoi faire à la place avec le temps libéré : avancer une tâche des jours suivants, ajouter une tâche du catalogue qui n'est pas prévue prochainement, ou faire une idée bonus. Tu peux aussi garder ce temps libre.
 
 **Tâche bonus** : une petite action en plus est proposée chaque semaine, s'il reste de la place sous le plafond.
 
@@ -73,7 +75,7 @@ tests/                  tests node:test
 
 ### Données stockées
 
-- **Réglages** : prénom, heures de réveil et de coucher, plafonds, temps de jeu protégé, heure du rappel
+- **Réglages** : prénom, heures de réveil et de coucher, plafonds, trajet, heure du rappel
 - **Événement** : titre, date ou jour de la semaine, début, fin, répétition
 - **Contrôle ou devoir** : matière, date, importance
 - **Tâche modèle** : nom, durée, fréquence, catégorie, difficulté, jour fixe, ressenti, mois de saison
