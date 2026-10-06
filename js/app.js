@@ -36,12 +36,34 @@ function toast(msg) {
 /* ---------- Maintenance quotidienne ---------- */
 
 /** Remet les jours à venir sous leur plafond (après un changement d'EDT, de réglage…). */
+/** Plafond de chaque jour restant de la semaine : s'il change, la répartition n'est plus bonne. */
+function capSignature(ws) {
+  const today = todayISO();
+  return weekDates(ws).filter((d) => d >= today).map((d) => `${d}:${dayInfo(state, d).cap}`).join('|');
+}
+
+/**
+ * Garde un planning cohérent : si les plafonds de la semaine ont changé (EDT, cours d'arabe,
+ * contrôle, réglages…), la semaine est replanifiée à partir d'aujourd'hui (tâches faites et
+ * déplacées à la main conservées). Ensuite, aucun jour à venir ne dépasse son plafond.
+ */
 function keepUnderCap() {
-  const { planned, moved } = rebalance(state, todayISO());
-  if (!moved.length) return;
+  const today = todayISO();
+  const ws = weekStart(today);
+  const sig = capSignature(ws);
+  const known = state.meta.capSig?.[ws];
+  const hasPlan = state.planned.some((p) => p.date >= ws && p.date <= addDays(ws, 6) && !p.locked);
+  let msg = null;
+  if (hasPlan && known !== sig) {
+    state.planned = generateWeek(state, ws, today).planned;
+    msg = 'Semaine réajustée selon ton nouveau programme';
+  }
+  state.meta.capSig = { [ws]: sig };
+  const { planned, moved } = rebalance(state, today);
   state.planned = planned;
   save(state);
-  toast(`${moved.length} tâche(s) déplacée(s) pour ne pas dépasser le plafond`);
+  if (moved.length && !msg) msg = `${moved.length} tâche(s) déplacée(s) pour ne pas dépasser le plafond`;
+  if (msg) toast(msg);
 }
 
 function dailyMaintenance() {
@@ -142,6 +164,7 @@ function tick() {
 function generate(ws) {
   const { planned, unplaced } = generateWeek(state, ws, todayISO());
   state.planned = planned;
+  if (ws === weekStart(todayISO())) state.meta.capSig = { [ws]: capSignature(ws) };
   state.meta.validated = { ...(state.meta.validated || {}), [ws]: false };
   save(state);
   render();
