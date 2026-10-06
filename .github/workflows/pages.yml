@@ -45,7 +45,7 @@ jobs:
 
       - name: Récupérer l'emploi du temps
         env:
-          EDT_GROUP: ${{ vars.EDT_GROUP || 'RT3-FA' }}
+          EDT_GROUP: ${{ vars.EDT_GROUP || 'RT3-FA-A1' }}
           EDT_BASE: ${{ vars.EDT_BASE || 'https://edt.iut-velizy.uvsq.fr' }}
           PREVIOUS_URL: ${{ steps.pages.outputs.base_url }}/edt.json
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}

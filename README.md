@@ -3,13 +3,13 @@
 Tu saisis ta semaine (cours, contrôles, activités) et la liste des tâches de la maison et du jardin. L'app répartit les tâches sur les jours où tu as le plus de temps et d'énergie. Elle garde toujours de la place pour réviser.
 
 - **App web installable (PWA)** : elle marche hors ligne et s'ajoute à l'écran d'accueil. Elle ne demande ni compte ni serveur.
-- **Emploi du temps de l'IUT synchronisé automatiquement** : une GitHub Action interroge le Celcat de l'IUT de Vélizy (groupe `RT3-FA`) à heures fixes. Elle détecte les cours ajoutés, déplacés ou annulés et les publie avec l'app.
+- **Emploi du temps de l'IUT synchronisé automatiquement** : une GitHub Action interroge le Celcat de l'IUT de Vélizy (groupe `RT3-FA-A1`) à heures fixes. Elle détecte les cours ajoutés, déplacés ou annulés et les publie avec l'app.
 
 ## Fonctionnalités
 
 | | |
 |---|---|
-| ☀️ **Aujourd'hui** | Tâches du jour à cocher, durée de chacune, temps libre restant, plafond de charge, cours et révisions du jour, bouton « Journée difficile » |
+| ☀️ **Aujourd'hui** | Dans l'ordre : programme du jour (cours avec type CM/TD/TP/DS, salle et enseignant, trajets, révisions), tâches à cocher avec bouton « Journée difficile », puis temps libre restant, plafond et heure de retour |
 | 🗓️ **Semaine** | « Générer ma semaine », vue des 7 jours avec la charge de chacun, puis validation. Sur chaque tâche, `⋯` permet de reporter, déplacer, échanger ou supprimer (un imprévu se gère en 2 clics) |
 | 🎓 **Planning** | État de la synchro EDT et derniers changements, contrôles et devoirs (date, matière, importance), activités ponctuelles ou répétées chaque semaine |
 | 🧺 **Tâches** | Catalogue (nom, durée, fréquence, catégorie, difficulté, jour fixe, mois de saison) et ressenti 😖 / 😐 / 🙂 |

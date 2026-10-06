@@ -114,6 +114,13 @@ section.stats3 { margin-bottom: 12px; }
 .blk.rev { border-color: var(--warn); }
 .blk.trajet { border-color: #0891b2; border-left-style: dashed; }
 .blk.exam { border-color: var(--exam); }
+.blk-sub { font-size: .85rem; color: var(--muted); margin-top: 2px; }
+.blk-sub b { color: var(--text); }
+.ctype { display: inline-block; font-size: .72rem; font-weight: 800; padding: 1px 6px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); margin-right: 4px; }
+.ctype-CM { background: #fee2e2; color: #991b1b; }
+.ctype-TD { background: #dbeafe; color: #1e40af; }
+.ctype-TP { background: #dcfce7; color: #166534; }
+.ctype-DS { background: #fce7f3; color: #9d174d; }
 .blk .time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: .85rem; margin-right: 6px; }
 
 .list { list-style: none; margin: 0; padding: 0; }

@@ -4,7 +4,7 @@ import { defaultStateForTests } from './helpers.mjs';
 import { addDays, weekDates } from '../js/dates.js';
 import { dayInfo, generateWeek, hardDay, loadOn, rollover, suggestReplacements } from '../js/scheduler.js';
 import { computeStats } from '../js/stats.js';
-import { diffEvents, normalizeEvent } from '../scripts/fetch-edt.mjs';
+import { diffEvents, normalizeEvent, shortType } from '../scripts/fetch-edt.mjs';
 
 const WS = '2026-10-05'; // lundi
 
@@ -191,6 +191,28 @@ test('EDT : normalisation d’un événement Celcat', () => {
     eventCategory: 'CM', modules: ['R5.01 - Management de projet'],
   }, 'RT3-FA');
   assert.deepEqual([e.date, e.start, e.end, e.title, e.type, e.room], ['2026-09-28', '08:30', '10:30', 'R5.01 - Management de projet', 'CM', 'E207']);
+});
+
+test('EDT : format de l’IUT (enseignant, groupe, salle « 412 - VEL »)', () => {
+  const e = normalizeEvent({
+    id: 'z', start: '2026-10-06T13:00:00', end: '2026-10-06T14:30:00',
+    description: 'TD<br />\r\n\r\nVANNIER Edwige<br />\r\n\r\nRT3-FA<br />\r\n\r\n412 - VEL<br />\r\n\r\nR5.07 Automatisation des tâches',
+    eventCategory: 'TD', modules: [],
+  }, 'RT3-FA-A1');
+  assert.deepEqual([e.type, e.room, e.title, e.teachers[0]], ['TD', '412 - VEL', 'R5.07 Automatisation des tâches', 'VANNIER Edwige']);
+});
+
+test('EDT : la fiche détaillée Celcat est prioritaire', () => {
+  const e = normalizeEvent({ id: 'y', start: '2026-10-06T15:00:00', end: '2026-10-06T16:30:00', description: 'FANCETT Jennifer<br />RT3-FA<br />513 - VEL', eventCategory: '' }, 'RT3-FA-A1', {
+    elements: [
+      { label: 'Catégorie', content: 'Travaux Pratiques' },
+      { label: 'Matière', content: 'R5.13 Anglais', entityType: 100 },
+      { label: 'Salle', content: '513 - VEL', entityType: 102 },
+      { label: 'Enseignant', content: 'FANCETT Jennifer', entityType: 101 },
+    ],
+  });
+  assert.deepEqual([e.type, e.title, e.room], ['TP', 'R5.13 Anglais', '513 - VEL']);
+  assert.deepEqual(['Cours magistral', 'DS', 'Devoir surveillé', 'TD'].map(shortType), ['CM', 'DS', 'DS', 'TD']);
 });
 
 test('EDT : détection des cours ajoutés, déplacés et annulés', () => {

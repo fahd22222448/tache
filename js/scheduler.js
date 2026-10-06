@@ -37,7 +37,7 @@ export function blocksOn(state, date) {
   if (state.settings.useEdt && state.edt?.events) {
     for (const e of state.edt.events) {
       if (e.date === date && !(state.settings.hiddenEdt || []).includes(e.title)) {
-        blocks.push({ kind: 'cours', title: e.title, start: e.start, end: e.end, room: e.room, type: e.type, away: true });
+        blocks.push({ kind: 'cours', title: e.title, start: e.start, end: e.end, room: e.room, type: e.type, teachers: e.teachers, away: true });
       }
     }
   }

@@ -402,6 +402,11 @@ function blockRow(b) {
       : ` <small>(jusqu’à ${fmtDuration(b.max)})</small>`;
     return `<li class="blk trajet"><span class="time">${b.start}–${b.end}</span> 🚆 ${esc(b.title)}${extra}</li>`;
   }
+  if (b.kind === 'cours') {
+    return `<li class="blk cours"><span class="time">${b.start}–${b.end}</span>
+      <span class="ctype ctype-${esc((b.type || 'Cours').replace(/[^A-Za-zÉé]/g, ''))}">${esc(b.type || 'Cours')}</span> ${esc(b.title)}
+      <div class="blk-sub">📍 ${b.room ? `<b>${esc(b.room)}</b>` : '<i>salle non indiquée</i>'}${b.teachers?.length ? ` · ${esc(b.teachers.join(', '))}` : ''}</div></li>`;
+  }
   return `<li class="blk ${b.kind}"><span class="time">${b.start}–${b.end}</span> ${b.arabic ? '📖' : BLOCK_ICON[b.kind] || '📌'} ${esc(b.title)}${b.room ? ` <small>${esc(b.room)}</small>` : ''}</li>`;
 }
 
@@ -433,14 +438,8 @@ function viewToday() {
   ${edtBanner(today)}
   ${weekEmpty ? `<section class="card banner"><strong>Ta semaine n'est pas encore planifiée.</strong><button class="btn primary" data-act="generate" data-ws="${ws}">✨ Générer ma semaine</button></section>` : ''}
   <section class="card">
-    <div class="stats3">
-      <div><b>${fmtDuration(Math.max(0, info.free - remaining))}</b><small>temps libre restant</small></div>
-      <div><b>${fmtDuration(remaining)}</b><small>de tâches à faire</small></div>
-      <div><b>${load}/${info.cap}</b><small>min (plafond)</small></div>
-    </div>
-    ${loadBar(load, info.cap)}
-    ${info.capReason ? `<p class="hint">⚖️ Charge réduite : ${esc(info.capReason)}</p>` : ''}
-    ${homeBack ? `<p class="hint">🏠 Retour à la maison entre ${homeBack.homeFrom} et ${homeBack.end} : tes tâches sont pour après.</p>` : ''}
+    <h2>Mon programme</h2>
+    ${blocksList(info)}
   </section>
   <section class="card">
     <h2>Mes tâches du jour</h2>
@@ -452,11 +451,17 @@ function viewToday() {
     : `<button class="btn soft" data-act="hard-day" data-date="${today}">😮‍💨 Journée difficile</button>`}
     </div>
   </section>
-  ${unplaced.length ? `<section class="card warn"><h2>À placer (${unplaced.length})</h2><p class="hint">Ces tâches ne rentrent pas sous ton plafond. Déplace-les à la main ou supprime-les.</p><ul class="tasks">${unplaced.map((p) => taskRow(p)).join('')}</ul></section>` : ''}
   <section class="card">
-    <h2>Mon programme</h2>
-    ${blocksList(info)}
-  </section>`;
+    <div class="stats3">
+      <div><b>${fmtDuration(Math.max(0, info.free - remaining))}</b><small>temps libre restant</small></div>
+      <div><b>${fmtDuration(remaining)}</b><small>de tâches à faire</small></div>
+      <div><b>${load}/${info.cap}</b><small>min (plafond)</small></div>
+    </div>
+    ${loadBar(load, info.cap)}
+    ${info.capReason ? `<p class="hint">⚖️ Charge réduite : ${esc(info.capReason)}</p>` : ''}
+    ${homeBack ? `<p class="hint">🏠 Retour à la maison entre ${homeBack.homeFrom} et ${homeBack.end} : tes tâches sont pour après.</p>` : ''}
+  </section>
+  ${unplaced.length ? `<section class="card warn"><h2>À placer (${unplaced.length})</h2><p class="hint">Ces tâches ne rentrent pas sous ton plafond. Déplace-les à la main ou supprime-les.</p><ul class="tasks">${unplaced.map((p) => taskRow(p)).join('')}</ul></section>` : ''}`;
 }
 
 function viewWeek() {

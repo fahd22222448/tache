@@ -6,7 +6,7 @@
 //
 // Variables d'environnement :
 //   EDT_BASE      https://edt.iut-velizy.uvsq.fr
-//   EDT_GROUP     RT3-FA
+//   EDT_GROUP     RT3-FA-A1
 //   EDT_WEEKS     nombre de semaines à récupérer (défaut 5)
 //   PREVIOUS_URL  edt.json actuellement publié, pour détecter les changements
 //   NTFY_TOPIC    (optionnel) sujet ntfy.sh pour recevoir une notification push en cas de changement
@@ -15,7 +15,9 @@ import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const BASE = process.env.EDT_BASE || 'https://edt.iut-velizy.uvsq.fr';
-const GROUP = process.env.EDT_GROUP || 'RT3-FA';
+const GROUP = process.env.EDT_GROUP || 'RT3-FA-A1';
+// À changer quand la façon de lire les cours change : évite de signaler tous les cours comme « modifiés ».
+const PARSER_VERSION = 2;
 const WEEKS = Number(process.env.EDT_WEEKS || 5);
 const TZ = 'Europe/Paris';
 
@@ -41,18 +43,52 @@ function decode(s) {
     .replace(/&([a-z#0-9]+);/gi, (m, e) => ENTITIES[e.toLowerCase()] ?? m);
 }
 
-/** Transforme un événement Celcat brut en événement simple pour l'app. */
-export function normalizeEvent(raw, group = GROUP) {
+/** Type de cours court : CM, TD, TP, DS, SAÉ, Projet… */
+export function shortType(raw) {
+  const s = String(raw || '').trim();
+  const rules = [
+    [/\b(ds|devoir surveill|contr[ôo]le|examen|partiel|évaluation|evaluation)\b/i, 'DS'],
+    [/\b(cm|cours magistral|magistral|amphi)\b/i, 'CM'],
+    [/\b(td|travaux dirig)/i, 'TD'],
+    [/\b(tp|travaux pratiq)/i, 'TP'],
+    [/\bsa[ée]\b|situation d.apprentissage/i, 'SAÉ'],
+    [/projet/i, 'Projet'],
+    [/soutenance/i, 'Soutenance'],
+    [/r[ée]union|amphi de rentr/i, 'Réunion'],
+  ];
+  for (const [re, label] of rules) if (re.test(s)) return label;
+  return s || 'Cours';
+}
+
+const isGroup = (l) => /^[A-Z]{1,5}\d?(-[A-Z0-9]+)+$/.test(l);
+// Salles du type « 412 - VEL », « G105 », « Amphi A », « Salle 12 », « E207 - VEL »
+const isRoom = (l) => l.length < 40
+  && (/\s-\s(VEL|RAM|VLZ|RBT)\b/i.test(l) || /^(salle|amphi|labo|bât|bat)\b/i.test(l) || /^[A-Z]{0,2}\d{2,4}[A-Z]?$/.test(l));
+const isPerson = (l) => /^[A-ZÀ-Ý' -]{2,}\s+[A-ZÀ-Ý][a-zà-ÿ'-]+(\s[A-ZÀ-Ý][a-zà-ÿ'-]+)*$/.test(l);
+
+/** Transforme un événement Celcat brut (et, si dispo, sa fiche détaillée) en événement simple. */
+export function normalizeEvent(raw, group = GROUP, side = null) {
   const lines = String(raw.description || '')
     .split(/<br\s*\/?>/i)
     .map((l) => decode(l.replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim())
     .filter(Boolean);
-  const type = raw.eventCategory || lines[0] || 'Cours';
   const modules = Array.isArray(raw.modules) ? raw.modules.filter(Boolean) : [];
-  const isRoom = (l) => /\b(salle|amphi|labo|td\s?\d)|^[A-Z]{1,3}[ -]?\d{2,4}[A-Z]?\b/i.test(l) && l.length < 40;
-  const rest = lines.filter((l) => l !== type && !l.includes(group));
-  const room = rest.find(isRoom) || '';
-  const title = modules[0] || rest.find((l) => l !== room) || type;
+  const typeLine = lines.find((l) => shortType(l) !== l && l.length < 30);
+  const sideGet = (re, type) => (side?.elements || [])
+    .filter((e) => (type && e.entityType === type) || re.test(e.label || ''))
+    .map((e) => decode(String(e.content || '')).trim())
+    .filter(Boolean);
+  const sideRooms = sideGet(/salle|room|local/i, 102);
+  const sideTeachers = sideGet(/enseignant|staff|intervenant|prof/i, 101);
+  const sideCategory = sideGet(/cat[ée]gorie|category|type/i)[0];
+  const sideModule = sideGet(/mati[èe]re|module|enseignement/i, 100)[0];
+  const rooms = sideRooms.length ? sideRooms : lines.filter(isRoom);
+  const teachers = sideTeachers.length ? sideTeachers : lines.filter(isPerson);
+  const typeRaw = sideCategory || raw.eventCategory || typeLine || '';
+  const type = shortType(typeRaw);
+  const rest = lines.filter((l) => !isGroup(l) && !rooms.includes(l) && !teachers.includes(l) && l !== typeLine && l !== raw.eventCategory);
+  const room = [...new Set(rooms)].join(', ');
+  const title = sideModule || modules[0] || rest.find((l) => /^(R|S|SAÉ|SAE)\s?\d/i.test(l)) || rest[0] || typeRaw || 'Cours';
   const start = String(raw.start || '');
   const end = String(raw.end || start);
   return {
@@ -62,7 +98,10 @@ export function normalizeEvent(raw, group = GROUP) {
     end: raw.allDay ? '18:00' : end.slice(11, 16),
     title,
     type,
+    typeRaw,
     room,
+    teachers: [...new Set(teachers)],
+    site: Array.isArray(raw.sites) ? raw.sites.filter(Boolean).join(', ') : '',
     details: lines,
   };
 }
@@ -96,10 +135,50 @@ export async function fetchCelcat({ from, to, group = GROUP, base = BASE }) {
     throw new Error(`Réponse non JSON (${text.slice(0, 80).replace(/\s+/g, ' ')}…)`);
   }
   if (!Array.isArray(data)) throw new Error('Réponse Celcat inattendue');
-  return data.map((e) => normalizeEvent(e, group)).sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+  // Fiche détaillée de chaque cours (salle, type, matière) : plus fiable que la description.
+  const sides = await mapLimit(data, 5, (e) => fetchSideBar(e.id, base).catch(() => null));
+  const okSides = sides.filter(Boolean).length;
+  console.log(`Fiches détaillées : ${okSides}/${data.length}`);
+  if (data.length) {
+    console.log('Exemple brut :', JSON.stringify({ ...data[0], description: data[0]?.description }).slice(0, 600));
+    if (sides[0]) console.log('Exemple fiche :', JSON.stringify(sides[0]).slice(0, 800));
+  }
+  return data
+    .map((e, i) => normalizeEvent(e, group, sides[i]))
+    .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
 }
 
-const sig = (e) => `${e.date} ${e.start}-${e.end} ${e.title} ${e.room}`;
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+async function fetchSideBar(eventId, base = BASE) {
+  const res = await fetch(`${base}/Home/GetSideBarEvent`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+      Accept: 'application/json, text/javascript, */*; q=0.01',
+      'User-Agent': 'Mozilla/5.0 (compatible; tache-edt-sync/1.0)',
+    },
+    body: new URLSearchParams({ eventId: String(eventId) }),
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!res.ok) throw new Error(String(res.status));
+  const json = await res.json();
+  return Array.isArray(json?.elements) ? json : null;
+}
+
+const sig = (e) => `${e.date} ${e.start}-${e.end} ${e.title} ${e.room} ${e.type}`;
 
 /** Compare l'ancien et le nouvel EDT : seuls les cours d'aujourd'hui et après, sur la période commune, comptent. */
 export function diffEvents(prev, next, { today, prevTo, at }) {
@@ -171,14 +250,17 @@ async function main() {
   let result;
   try {
     const events = await fetchCelcat({ from, to });
-    const fresh = prev?.events?.length
+    // Changement de groupe ou de lecture : on repart de zéro au lieu de tout signaler comme modifié.
+    const comparable = prev?.events?.length && prev.group === GROUP && prev.parserVersion === PARSER_VERSION;
+    for (const e of events.slice(0, 12)) console.log(`  ${e.date} ${e.start}-${e.end} [${e.type}] ${e.title} @ ${e.room || '?'} (${e.teachers.join(', ')})`);
+    const fresh = comparable
       ? diffEvents(prev.events, events, { today, prevTo: prev.range?.to, at })
       : [];
     const cutoff = addDays(today, -30);
-    const changes = [...(prev?.changes || []).filter((c) => c.at.slice(0, 10) >= cutoff), ...fresh].slice(-60);
+    const changes = [...(comparable ? prev.changes || [] : []).filter((c) => c.at.slice(0, 10) >= cutoff), ...fresh].slice(-60);
     const sameEvents = prev && JSON.stringify(prev.events) === JSON.stringify(events);
     result = {
-      group: GROUP, source: BASE, ok: true, error: null,
+      group: GROUP, source: BASE, ok: true, error: null, parserVersion: PARSER_VERSION,
       range: { from, to },
       checkedAt: at,
       fetchedAt: at,
